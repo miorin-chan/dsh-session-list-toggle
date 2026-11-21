@@ -23,16 +23,38 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-// The native list is not its own slot. Scope the style to the sidebar scrollport
-// and its list body. If the marker changes, the selector matches nothing.
+// The footer slot supplies the button. These native DOM markers locate the
+// title and list without changing their React ownership.
+const SCROLLPORT = '[data-sidebar-scrollport]'
+const HEADER = `${SCROLLPORT} [data-sidebar-workspace-header]`
+const TITLE = `${HEADER} > span:first-child`
+const BUTTON = '[data-dsh-workspace-list-toggle]'
 const STYLE = `
-  body:has([data-dsh-workspace-list-toggle][aria-expanded="false"])
-    [data-sidebar-scrollport] [data-sidebar-list-area] { display: none; }
-  [data-dsh-workspace-list-toggle] {
-    display: grid;
+  ${BUTTON} { display: none; }
+  @supports (anchor-name: --dsh-workspace-list-title) and (position-visibility: anchors-visible) {
+    body:has(${BUTTON}) ${TITLE} {
+      anchor-name: --dsh-workspace-list-title;
+    }
+    body:has(${BUTTON}) ${HEADER}:not(:has(input[tabindex="0"])) > span:first-child {
+      margin-right: 24px;
+    }
+    body:has(${TITLE}):has(${BUTTON}[aria-expanded="false"]):not(:has(${HEADER} input[tabindex="0"]))
+      ${SCROLLPORT} [data-sidebar-list-area] { display: none; }
+    body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"])) ${BUTTON} {
+      display: grid;
+      position: fixed;
+      position-anchor: --dsh-workspace-list-title;
+      position-visibility: anchors-visible;
+      top: anchor(center);
+      left: calc(anchor(right) + 3px);
+      translate: 0 -50%;
+      z-index: 1;
+    }
+  }
+  ${BUTTON} {
     place-items: center;
-    inline-size: 28px;
-    block-size: 28px;
+    inline-size: 22px;
+    block-size: 24px;
     padding: 0;
     border: 0;
     border-radius: 6px;

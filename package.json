@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "Hide or show the sidebar Workspace and Session list from the sidebar footer.",
+  "description": "Hide or show the sidebar list with the chevron beside its heading.",
   "type": "module",
   "keywords": [
     "deepseek-harness",

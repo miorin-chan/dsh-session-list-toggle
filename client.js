@@ -47,14 +47,36 @@ var LABELS = {
   pt: { hide: "Ocultar a lista de espa\xE7os de trabalho e sess\xF5es", show: "Mostrar a lista de espa\xE7os de trabalho e sess\xF5es" },
   ru: { hide: "\u0421\u043A\u0440\u044B\u0442\u044C \u0441\u043F\u0438\u0441\u043E\u043A \u0440\u0430\u0431\u043E\u0447\u0438\u0445 \u043E\u0431\u043B\u0430\u0441\u0442\u0435\u0439 \u0438 \u0441\u0435\u0430\u043D\u0441\u043E\u0432", show: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0441\u043F\u0438\u0441\u043E\u043A \u0440\u0430\u0431\u043E\u0447\u0438\u0445 \u043E\u0431\u043B\u0430\u0441\u0442\u0435\u0439 \u0438 \u0441\u0435\u0430\u043D\u0441\u043E\u0432" }
 };
+var SCROLLPORT = "[data-sidebar-scrollport]";
+var HEADER = `${SCROLLPORT} [data-sidebar-workspace-header]`;
+var TITLE = `${HEADER} > span:first-child`;
+var BUTTON = "[data-dsh-workspace-list-toggle]";
 var STYLE = `
-  body:has([data-dsh-workspace-list-toggle][aria-expanded="false"])
-    [data-sidebar-scrollport] [data-sidebar-list-area] { display: none; }
-  [data-dsh-workspace-list-toggle] {
-    display: grid;
+  ${BUTTON} { display: none; }
+  @supports (anchor-name: --dsh-workspace-list-title) and (position-visibility: anchors-visible) {
+    body:has(${BUTTON}) ${TITLE} {
+      anchor-name: --dsh-workspace-list-title;
+    }
+    body:has(${BUTTON}) ${HEADER}:not(:has(input[tabindex="0"])) > span:first-child {
+      margin-right: 24px;
+    }
+    body:has(${TITLE}):has(${BUTTON}[aria-expanded="false"]):not(:has(${HEADER} input[tabindex="0"]))
+      ${SCROLLPORT} [data-sidebar-list-area] { display: none; }
+    body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"])) ${BUTTON} {
+      display: grid;
+      position: fixed;
+      position-anchor: --dsh-workspace-list-title;
+      position-visibility: anchors-visible;
+      top: anchor(center);
+      left: calc(anchor(right) + 3px);
+      translate: 0 -50%;
+      z-index: 1;
+    }
+  }
+  ${BUTTON} {
     place-items: center;
-    inline-size: 28px;
-    block-size: 28px;
+    inline-size: 22px;
+    block-size: 24px;
     padding: 0;
     border: 0;
     border-radius: 6px;
