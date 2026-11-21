@@ -84,8 +84,16 @@ var STYLE = `
     color: var(--dsw-alias-content-secondary, currentColor);
     cursor: pointer;
   }
-  [data-dsh-workspace-list-toggle]:hover { background: var(--dsw-alias-fill-hover, transparent); }
-  [data-dsh-workspace-list-toggle]:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
+  ${BUTTON}:hover { background: var(--dsw-alias-fill-hover, transparent); }
+  ${BUTTON}:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
+  ${BUTTON} > svg {
+    transform: rotate(0deg);
+    transition: transform 160ms ease-in-out;
+  }
+  ${BUTTON}[aria-expanded="true"] > svg { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce) {
+    ${BUTTON} > svg { transition: none; }
+  }
 `;
 var inject = ["slots", "locale"];
 function apply(ctx) {
@@ -125,7 +133,7 @@ function apply(ctx) {
               strokeWidth: "1",
               strokeLinecap: "round",
               strokeLinejoin: "round",
-              children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: visible ? "m5 6.5 3 3 3-3" : "m6.5 5 3 3-3 3" })
+              children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "m6.5 5 3 3-3 3" })
             }
           )
         }

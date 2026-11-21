@@ -62,8 +62,16 @@ const STYLE = `
     color: var(--dsw-alias-content-secondary, currentColor);
     cursor: pointer;
   }
-  [data-dsh-workspace-list-toggle]:hover { background: var(--dsw-alias-fill-hover, transparent); }
-  [data-dsh-workspace-list-toggle]:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
+  ${BUTTON}:hover { background: var(--dsw-alias-fill-hover, transparent); }
+  ${BUTTON}:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
+  ${BUTTON} > svg {
+    transform: rotate(0deg);
+    transition: transform 160ms ease-in-out;
+  }
+  ${BUTTON}[aria-expanded="true"] > svg { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce) {
+    ${BUTTON} > svg { transition: none; }
+  }
 `
 
 export const inject = ['slots', 'locale']
@@ -93,7 +101,7 @@ export function apply(ctx: Context): void {
       >
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"
           stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-          <path d={visible ? 'm5 6.5 3 3 3-3' : 'm6.5 5 3 3-3 3'} />
+          <path d="m6.5 5 3 3-3 3" />
         </svg>
       </button>
     </>
