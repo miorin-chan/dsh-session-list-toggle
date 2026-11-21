@@ -10,6 +10,13 @@ import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controlle
 import { attentionSessionIds } from './attention.js'
 
 const NS = 'dsh-workspace-list-toggle'
+// DSH IconQueueOutlineRegular artwork. See THIRD-PARTY-NOTICES.txt.
+const EMPTY_ICON = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="black">
+  <path d="M5 6.75H11" />
+  <path d="M5 9H8" />
+  <path d="M2.37067 11.2497C1.5872 9.89252 1.32042 8.29798 1.61945 6.7597C1.91847 5.22141 2.76317 3.84293 3.99801 2.87809C5.23285 1.91325 6.7747 1.427 8.33964 1.50888C9.90458 1.59076 11.3873 2.23526 12.5147 3.32369C13.6422 4.41232 14.3384 5.8717 14.4751 7.43304C14.6118 8.99438 14.1797 10.5525 13.2585 11.8205C12.3372 13.0885 10.9889 13.9809 9.4617 14.3334C8.18666 14.6277 6.8587 14.529 5.64964 14.0601C5.17095 13.8745 4.76937 13.4929 4.26509 13.3963C3.67389 13.2832 2.95232 13.5595 2.0377 14.3334" />
+</svg>`)}`
+
 const LABELS = {
   en: { hide: 'Collapse session list', attention: 'Show sessions needing attention', show: 'Show full session list', empty: 'No sessions need attention', loading: 'Loading sessions…' },
   zh: { hide: '收起会话列表', attention: '仅显示需关注的会话', show: '显示全部会话', empty: '没有需要关注的会话', loading: '正在加载会话…' },
@@ -165,7 +172,7 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
       block-size: 24px;
       margin: 80px auto 12px;
       background-color: var(--dsw-alias-label-caption);
-      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 6h14M5 12h10M5 18h6m4 0 2 2 4-4' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+      mask: url("${EMPTY_ICON}") center / contain no-repeat;
     }
     ${emptyList}::after {
       content: ${JSON.stringify(t(list.phase === 'pending' ? 'loading' : 'empty'))};

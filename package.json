@@ -22,6 +22,7 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
+    "THIRD-PARTY-NOTICES.txt",
     "README.md",
     "AGENTS.md",
     "AGENTS.local.md",
