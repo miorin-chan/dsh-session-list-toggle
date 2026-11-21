@@ -140,6 +140,7 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
     return [{ anchor: row(`workspace:${item.workspaceId}`), ancestors }]
   })
   const ancestorRows = hiddenDescendants.flatMap(item => item.ancestors)
+  const emptyList = `${scope}:not(:has(${[...sessionRows, ...groupRows, ...ancestorRows].join(', ') || ':not(*)'}))`
   return <style>{`
     ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(', ') || ':not(*)'})),
     ${scope} div:has(> [data-row-key^="workspace:"]):not(:has(${keep})),
@@ -150,12 +151,23 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
         display: block;
       }
     `).join('')}
-    ${scope}:not(:has(${[...sessionRows, ...groupRows, ...ancestorRows].join(', ') || ':not(*)'}))::after {
+    ${emptyList}::before {
+      content: '';
+      display: block;
+      inline-size: 24px;
+      block-size: 24px;
+      margin: 80px auto 12px;
+      background-color: var(--dsw-alias-label-caption);
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 6h14M5 12h10M5 18h6m4 0 2 2 4-4' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+    }
+    ${emptyList}::after {
       content: ${JSON.stringify(t(list.phase === 'pending' ? 'loading' : 'empty'))};
       display: block;
-      padding: 8px;
-      color: var(--dsw-alias-label-secondary, currentColor);
-      font-size: 11px;
+      padding-inline: 12px;
+      color: var(--dsw-alias-label-tertiary);
+      font-size: 13px;
+      line-height: 20px;
+      text-align: center;
     }
   `}</style>
 }
