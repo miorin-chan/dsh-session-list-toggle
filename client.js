@@ -113,7 +113,7 @@ function apply(ctx) {
             listVisible = !listVisible;
             setVisible(listVisible);
           },
-          children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "svg",
             {
               "aria-hidden": "true",
@@ -125,10 +125,7 @@ function apply(ctx) {
               strokeWidth: "1.4",
               strokeLinecap: "round",
               strokeLinejoin: "round",
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M2.5 4h6m-6 4h4m-4 4h6" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: visible ? "m9 10 2.5-2.5L14 10" : "m9 7 2.5 2.5L14 7" })
-              ]
+              children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: visible ? "m5 6.5 3 3 3-3" : "m6.5 5 3 3-3 3" })
             }
           )
         }
