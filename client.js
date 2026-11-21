@@ -35,23 +35,42 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 var import_react = require("react");
+
+// src/client/attention.ts
+function attentionSessionIds(list, statuses, archivedIds) {
+  const archived = new Set(archivedIds);
+  return list.ids.filter((id) => {
+    const session = list.byId[id];
+    if (session === void 0 || session.origin === "subagent" || archived.has(id)) return false;
+    const status = statuses.get(id);
+    const pending = status?.pendingInteraction?.kind;
+    if (pending === "approval" || pending === "plan-review" || pending === "question") return true;
+    if ((status?.running ?? session.running) || status?.completionUnread) return true;
+    return list.projectionsBySession[id]?.values.subagentCatalog?.some(
+      (child) => statuses.get(child.id)?.running ?? list.byId[child.id]?.running ?? false
+    ) ?? false;
+  });
+}
+
+// src/client/index.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
 var NS = "dsh-workspace-list-toggle";
 var LABELS = {
-  en: { hide: "Hide workspace and session list", show: "Show workspace and session list" },
-  zh: { hide: "\u9690\u85CF\u5DE5\u4F5C\u533A\u548C\u4F1A\u8BDD\u5217\u8868", show: "\u663E\u793A\u5DE5\u4F5C\u533A\u548C\u4F1A\u8BDD\u5217\u8868" },
-  ja: { hide: "\u30EF\u30FC\u30AF\u30B9\u30DA\u30FC\u30B9\u3068\u30BB\u30C3\u30B7\u30E7\u30F3\u306E\u4E00\u89A7\u3092\u96A0\u3059", show: "\u30EF\u30FC\u30AF\u30B9\u30DA\u30FC\u30B9\u3068\u30BB\u30C3\u30B7\u30E7\u30F3\u306E\u4E00\u89A7\u3092\u8868\u793A" },
-  de: { hide: "Arbeitsbereichs- und Sitzungsliste ausblenden", show: "Arbeitsbereichs- und Sitzungsliste anzeigen" },
-  es: { hide: "Ocultar la lista de espacios de trabajo y sesiones", show: "Mostrar la lista de espacios de trabajo y sesiones" },
-  fr: { hide: "Masquer la liste des espaces de travail et des sessions", show: "Afficher la liste des espaces de travail et des sessions" },
-  pt: { hide: "Ocultar a lista de espa\xE7os de trabalho e sess\xF5es", show: "Mostrar a lista de espa\xE7os de trabalho e sess\xF5es" },
-  ru: { hide: "\u0421\u043A\u0440\u044B\u0442\u044C \u0441\u043F\u0438\u0441\u043E\u043A \u0440\u0430\u0431\u043E\u0447\u0438\u0445 \u043E\u0431\u043B\u0430\u0441\u0442\u0435\u0439 \u0438 \u0441\u0435\u0430\u043D\u0441\u043E\u0432", show: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0441\u043F\u0438\u0441\u043E\u043A \u0440\u0430\u0431\u043E\u0447\u0438\u0445 \u043E\u0431\u043B\u0430\u0441\u0442\u0435\u0439 \u0438 \u0441\u0435\u0430\u043D\u0441\u043E\u0432" }
+  en: { hide: "Collapse session list", attention: "Show sessions needing attention", show: "Show full session list", empty: "No sessions need attention", loading: "Loading sessions\u2026" },
+  zh: { hide: "\u6536\u8D77\u4F1A\u8BDD\u5217\u8868", attention: "\u4EC5\u663E\u793A\u9700\u5173\u6CE8\u7684\u4F1A\u8BDD", show: "\u663E\u793A\u5168\u90E8\u4F1A\u8BDD", empty: "\u6CA1\u6709\u9700\u8981\u5173\u6CE8\u7684\u4F1A\u8BDD", loading: "\u6B63\u5728\u52A0\u8F7D\u4F1A\u8BDD\u2026" },
+  ja: { hide: "\u30BB\u30C3\u30B7\u30E7\u30F3\u4E00\u89A7\u3092\u6298\u308A\u305F\u305F\u3080", attention: "\u8981\u78BA\u8A8D\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3092\u8868\u793A", show: "\u3059\u3079\u3066\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3092\u8868\u793A", empty: "\u8981\u78BA\u8A8D\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u306F\u3042\u308A\u307E\u305B\u3093", loading: "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026" },
+  de: { hide: "Sitzungsliste einklappen", attention: "Sitzungen mit Handlungsbedarf anzeigen", show: "Alle Sitzungen anzeigen", empty: "Keine Sitzung erfordert Aufmerksamkeit", loading: "Sitzungen werden geladen\u2026" },
+  es: { hide: "Contraer la lista de sesiones", attention: "Mostrar las sesiones que requieren atenci\xF3n", show: "Mostrar todas las sesiones", empty: "Ninguna sesi\xF3n requiere atenci\xF3n", loading: "Cargando sesiones\u2026" },
+  fr: { hide: "Replier la liste des sessions", attention: "Afficher les sessions \xE0 suivre", show: "Afficher toutes les sessions", empty: "Aucune session ne requiert votre attention", loading: "Chargement des sessions\u2026" },
+  pt: { hide: "Recolher a lista de sess\xF5es", attention: "Mostrar sess\xF5es que exigem aten\xE7\xE3o", show: "Mostrar todas as sess\xF5es", empty: "Nenhuma sess\xE3o requer aten\xE7\xE3o", loading: "Carregando sess\xF5es\u2026" },
+  ru: { hide: "\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0435\u0430\u043D\u0441\u043E\u0432", attention: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0441\u0435\u0430\u043D\u0441\u044B, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0435 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F", show: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0432\u0441\u0435 \u0441\u0435\u0430\u043D\u0441\u044B", empty: "\u041D\u0435\u0442 \u0441\u0435\u0430\u043D\u0441\u043E\u0432, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0445 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F", loading: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0441\u0435\u0430\u043D\u0441\u043E\u0432\u2026" }
 };
 var SCROLLPORT = "[data-sidebar-scrollport]";
 var HEADER = `${SCROLLPORT} [data-sidebar-workspace-header]`;
 var TITLE = `${HEADER} > span:first-child`;
 var BUTTON = "[data-dsh-workspace-list-toggle]";
 var LIST = `${SCROLLPORT} [data-sidebar-list-area]`;
+var SESSION_ROW = '[data-row-key^="session:"]';
 var BROWSING = `body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"]))`;
 var STYLE = `
   ${BUTTON} { display: none; }
@@ -107,24 +126,72 @@ var STYLE = `
     transform: rotate(0deg);
     transition: transform 160ms ease-in-out;
   }
-  ${BUTTON}[aria-expanded="true"] > svg { transform: rotate(90deg); }
+  ${BUTTON}[data-mode="all"] > svg { transform: rotate(90deg); }
+  ${BUTTON}[data-mode="attention"] > svg { transform: rotate(45deg); }
   @media (prefers-reduced-motion: reduce) {
     ${BUTTON} > svg,
     ${BROWSING}:has(${BUTTON}) ${LIST} { transition: none; }
   }
 `;
+var nextMode = { all: "collapsed", collapsed: "attention", attention: "all" };
+var nextLabel = { all: "hide", collapsed: "attention", attention: "show" };
+function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }) {
+  const list = useSessions((value) => value);
+  const statuses = useSessionStatus((value) => value);
+  const workspace = useWorkspaces((value) => value);
+  const ids = attentionSessionIds(list, statuses, workspace.archivedSessionIds);
+  const pending = new Set(ids);
+  const activeWorkspaces = workspace.items.filter((item) => {
+    let hasAttention = false;
+    for (const id of item.sessionIds) {
+      if (pending.delete(id)) hasAttention = true;
+    }
+    return hasAttention;
+  });
+  const row = (key) => `[data-row-key="${CSS.escape(key)}"]`;
+  const activeKeys = activeWorkspaces.map((item) => item.workspaceId);
+  if (pending.size > 0) activeKeys.push("");
+  const groupRows = activeKeys.map((key) => row(`workspace:${key}`));
+  const sessionRows = ids.map((id) => row(`session:${id}`));
+  const keep = [...sessionRows, ...groupRows].join(", ") || ":not(*)";
+  const scope = `${BROWSING}:has(${BUTTON}[data-mode="attention"]) ${LIST}`;
+  const hiddenDescendants = activeWorkspaces.flatMap((item) => {
+    const ancestors = workspace.items.filter((candidate) => candidate.path !== item.path && (item.path.startsWith(candidate.path.replace(/\/+$/, "") + "/") || item.path.startsWith(candidate.path.replace(/\\+$/, "") + "\\"))).map((candidate) => row(`workspace:${candidate.workspaceId}`));
+    if (ancestors.length === 0) return [];
+    return [{ anchor: row(`workspace:${item.workspaceId}`), ancestors }];
+  });
+  const ancestorRows = hiddenDescendants.flatMap((item) => item.ancestors);
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: `
+    ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(", ") || ":not(*)"})),
+    ${scope} div:has(> [data-row-key^="workspace:"]):not(:has(${keep})),
+    ${scope} [data-row-key^="overflow:"]:not(:is(${activeKeys.map((key) => row(`overflow:${key}`)).join(", ") || ":not(*)"})),
+    ${scope} [data-row-key="empty"] { display: none; }
+    ${hiddenDescendants.map(({ anchor, ancestors }) => `
+      ${scope}:not(:has(${anchor})) div:has(:is(${ancestors.join(", ")})):has(> [data-row-key^="workspace:"]) {
+        display: block;
+      }
+    `).join("")}
+    ${scope}:not(:has(${[...sessionRows, ...groupRows, ...ancestorRows].join(", ") || ":not(*)"}))::after {
+      content: ${JSON.stringify(t(list.phase === "pending" ? "loading" : "empty"))};
+      display: block;
+      padding: 8px;
+      color: var(--dsw-alias-label-secondary, currentColor);
+      font-size: 11px;
+    }
+  ` });
+}
 var inject = ["slots", "locale"];
 function apply(ctx) {
-  let listVisible = true;
+  let listMode = "all";
   ctx.effect(() => ctx.locale.register(NS, LABELS));
   ctx.slots.inject("sidebar.footer.action", () => ctx.slots.register({
     name: "sidebar.footer.action",
     id: NS,
     locale: NS
-  }, function ListToggle({ t, wide }) {
-    const [visible, setVisible] = (0, import_react.useState)(listVisible);
+  }, function ListToggle({ t, wide, useSessions, useSessionStatus, useWorkspaces }) {
+    const [mode, setMode] = (0, import_react.useState)(listMode);
     if (!wide) return null;
-    const label = t(visible ? "hide" : "show");
+    const label = t(nextLabel[mode]);
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: STYLE }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -132,12 +199,13 @@ function apply(ctx) {
         {
           type: "button",
           "data-dsh-workspace-list-toggle": "",
-          "aria-expanded": visible,
+          "data-mode": mode,
+          "aria-expanded": mode !== "collapsed",
           "aria-label": label,
           title: label,
           onClick: () => {
-            listVisible = !listVisible;
-            setVisible(listVisible);
+            listMode = nextMode[mode];
+            setMode(listMode);
           },
           children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "svg",
@@ -155,7 +223,8 @@ function apply(ctx) {
             }
           )
         }
-      )
+      ),
+      mode === "attention" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AttentionFilter, { ...{ t, useSessions, useSessionStatus, useWorkspaces } })
     ] });
   }));
 }

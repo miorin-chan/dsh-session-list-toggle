@@ -3,18 +3,22 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
-import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import type { SnapshotSelectorHook, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SessionStatusSnapshot, UseSessions, UseSessionStatus } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import { attentionSessionIds } from './attention.js'
 
 const NS = 'dsh-workspace-list-toggle'
 const LABELS = {
-  en: { hide: 'Hide workspace and session list', show: 'Show workspace and session list' },
-  zh: { hide: '隐藏工作区和会话列表', show: '显示工作区和会话列表' },
-  ja: { hide: 'ワークスペースとセッションの一覧を隠す', show: 'ワークスペースとセッションの一覧を表示' },
-  de: { hide: 'Arbeitsbereichs- und Sitzungsliste ausblenden', show: 'Arbeitsbereichs- und Sitzungsliste anzeigen' },
-  es: { hide: 'Ocultar la lista de espacios de trabajo y sesiones', show: 'Mostrar la lista de espacios de trabajo y sesiones' },
-  fr: { hide: 'Masquer la liste des espaces de travail et des sessions', show: 'Afficher la liste des espaces de travail et des sessions' },
-  pt: { hide: 'Ocultar a lista de espaços de trabalho e sessões', show: 'Mostrar a lista de espaços de trabalho e sessões' },
-  ru: { hide: 'Скрыть список рабочих областей и сеансов', show: 'Показать список рабочих областей и сеансов' },
+  en: { hide: 'Collapse session list', attention: 'Show sessions needing attention', show: 'Show full session list', empty: 'No sessions need attention', loading: 'Loading sessions…' },
+  zh: { hide: '收起会话列表', attention: '仅显示需关注的会话', show: '显示全部会话', empty: '没有需要关注的会话', loading: '正在加载会话…' },
+  ja: { hide: 'セッション一覧を折りたたむ', attention: '要確認のセッションを表示', show: 'すべてのセッションを表示', empty: '要確認のセッションはありません', loading: '読み込み中…' },
+  de: { hide: 'Sitzungsliste einklappen', attention: 'Sitzungen mit Handlungsbedarf anzeigen', show: 'Alle Sitzungen anzeigen', empty: 'Keine Sitzung erfordert Aufmerksamkeit', loading: 'Sitzungen werden geladen…' },
+  es: { hide: 'Contraer la lista de sesiones', attention: 'Mostrar las sesiones que requieren atención', show: 'Mostrar todas las sesiones', empty: 'Ninguna sesión requiere atención', loading: 'Cargando sesiones…' },
+  fr: { hide: 'Replier la liste des sessions', attention: 'Afficher les sessions à suivre', show: 'Afficher toutes les sessions', empty: 'Aucune session ne requiert votre attention', loading: 'Chargement des sessions…' },
+  pt: { hide: 'Recolher a lista de sessões', attention: 'Mostrar sessões que exigem atenção', show: 'Mostrar todas as sessões', empty: 'Nenhuma sessão requer atenção', loading: 'Carregando sessões…' },
+  ru: { hide: 'Свернуть список сеансов', attention: 'Показать сеансы, требующие внимания', show: 'Показать все сеансы', empty: 'Нет сеансов, требующих внимания', loading: 'Загрузка сеансов…' },
 } as const
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -30,6 +34,7 @@ const HEADER = `${SCROLLPORT} [data-sidebar-workspace-header]`
 const TITLE = `${HEADER} > span:first-child`
 const BUTTON = '[data-dsh-workspace-list-toggle]'
 const LIST = `${SCROLLPORT} [data-sidebar-list-area]`
+const SESSION_ROW = '[data-row-key^="session:"]'
 const BROWSING = `body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"]))`
 const STYLE = `
   ${BUTTON} { display: none; }
@@ -85,36 +90,100 @@ const STYLE = `
     transform: rotate(0deg);
     transition: transform 160ms ease-in-out;
   }
-  ${BUTTON}[aria-expanded="true"] > svg { transform: rotate(90deg); }
+  ${BUTTON}[data-mode="all"] > svg { transform: rotate(90deg); }
+  ${BUTTON}[data-mode="attention"] > svg { transform: rotate(45deg); }
   @media (prefers-reduced-motion: reduce) {
     ${BUTTON} > svg,
     ${BROWSING}:has(${BUTTON}) ${LIST} { transition: none; }
   }
 `
 
+const nextMode = { all: 'collapsed', collapsed: 'attention', attention: 'all' } as const
+type Mode = keyof typeof nextMode
+const nextLabel = { all: 'hide', collapsed: 'attention', attention: 'show' } as const
+
+interface AttentionProps {
+  useSessions: UseSessions
+  useSessionStatus: UseSessionStatus
+  useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>
+  t: TranslateNS<typeof NS>
+}
+
+function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: AttentionProps) {
+  const list = useSessions((value: SessionListState) => value)
+  const statuses = useSessionStatus((value: SessionStatusSnapshot) => value)
+  const workspace: WorkspaceSnapshot = useWorkspaces((value: WorkspaceSnapshot) => value)
+  const ids = attentionSessionIds(list, statuses, workspace.archivedSessionIds)
+  const pending = new Set(ids)
+  const activeWorkspaces = workspace.items.filter(item => {
+    let hasAttention = false
+    for (const id of item.sessionIds) {
+      if (pending.delete(id)) hasAttention = true
+    }
+    return hasAttention
+  })
+  const row = (key: string) => `[data-row-key="${CSS.escape(key)}"]`
+  const activeKeys = activeWorkspaces.map(item => item.workspaceId as string)
+  if (pending.size > 0) activeKeys.push('') // The original browser's Ungrouped key.
+  const groupRows = activeKeys.map(key => row(`workspace:${key}`))
+  const sessionRows = ids.map(id => row(`session:${id}`))
+  const keep = [...sessionRows, ...groupRows].join(', ') || ':not(*)'
+  const scope = `${BROWSING}:has(${BUTTON}[data-mode="attention"]) ${LIST}`
+  // Native child headings disappear under folded ancestors. A filesystem ancestor
+  // is only a fallback when the matching child heading is absent from the list.
+  const hiddenDescendants = activeWorkspaces.flatMap(item => {
+    const ancestors = workspace.items.filter(candidate => candidate.path !== item.path && (
+      item.path.startsWith(candidate.path.replace(/\/+$/, '') + '/') ||
+      item.path.startsWith(candidate.path.replace(/\\+$/, '') + '\\')
+    )).map(candidate => row(`workspace:${candidate.workspaceId}`))
+    if (ancestors.length === 0) return []
+    return [{ anchor: row(`workspace:${item.workspaceId}`), ancestors }]
+  })
+  const ancestorRows = hiddenDescendants.flatMap(item => item.ancestors)
+  return <style>{`
+    ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(', ') || ':not(*)'})),
+    ${scope} div:has(> [data-row-key^="workspace:"]):not(:has(${keep})),
+    ${scope} [data-row-key^="overflow:"]:not(:is(${activeKeys.map(key => row(`overflow:${key}`)).join(', ') || ':not(*)'})),
+    ${scope} [data-row-key="empty"] { display: none; }
+    ${hiddenDescendants.map(({ anchor, ancestors }) => `
+      ${scope}:not(:has(${anchor})) div:has(:is(${ancestors.join(', ')})):has(> [data-row-key^="workspace:"]) {
+        display: block;
+      }
+    `).join('')}
+    ${scope}:not(:has(${[...sessionRows, ...groupRows, ...ancestorRows].join(', ') || ':not(*)'}))::after {
+      content: ${JSON.stringify(t(list.phase === 'pending' ? 'loading' : 'empty'))};
+      display: block;
+      padding: 8px;
+      color: var(--dsw-alias-label-secondary, currentColor);
+      font-size: 11px;
+    }
+  `}</style>
+}
+
 export const inject = ['slots', 'locale']
 
 export function apply(ctx: Context): void {
   // Keep the preference for this page even if the sidebar footer remounts.
-  let listVisible = true
+  let listMode: Mode = 'all'
   ctx.effect(() => ctx.locale.register(NS, LABELS))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: NS, locale: NS,
-  }, function ListToggle({ t, wide }) {
-    const [visible, setVisible] = useState(listVisible)
+  }, function ListToggle({ t, wide, useSessions, useSessionStatus, useWorkspaces }) {
+    const [mode, setMode] = useState(listMode)
     if (!wide) return null
-    const label = t(visible ? 'hide' : 'show')
+    const label = t(nextLabel[mode])
     return <>
       <style>{STYLE}</style>
       <button
         type="button"
         data-dsh-workspace-list-toggle=""
-        aria-expanded={visible}
+        data-mode={mode}
+        aria-expanded={mode !== 'collapsed'}
         aria-label={label}
         title={label}
         onClick={() => {
-          listVisible = !listVisible
-          setVisible(listVisible)
+          listMode = nextMode[mode]
+          setMode(listMode)
         }}
       >
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"
@@ -122,6 +191,7 @@ export function apply(ctx: Context): void {
           <path d="m6.5 5 3 3-3 3" />
         </svg>
       </button>
+      {mode === 'attention' && <AttentionFilter {...{ t, useSessions, useSessionStatus, useWorkspaces }} />}
     </>
   }))
 }
