@@ -122,7 +122,7 @@ function apply(ctx) {
               viewBox: "0 0 16 16",
               fill: "none",
               stroke: "currentColor",
-              strokeWidth: "1.4",
+              strokeWidth: "1",
               strokeLinecap: "round",
               strokeLinejoin: "round",
               children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: visible ? "m5 6.5 3 3 3-3" : "m6.5 5 3 3-3 3" })

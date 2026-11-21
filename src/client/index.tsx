@@ -92,7 +92,7 @@ export function apply(ctx: Context): void {
         }}
       >
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"
-          stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+          stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
           <path d={visible ? 'm5 6.5 3 3 3-3' : 'm6.5 5 3 3-3 3'} />
         </svg>
       </button>
