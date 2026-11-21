@@ -42,7 +42,7 @@ const STYLE = `
     }
     ${BROWSING}:has(${BUTTON}[aria-expanded="false"]) ${LIST} { display: none; }
     /* Match the native scroller's viewport cap so long lists start shrinking immediately. */
-    @supports (block-size: calc-size(auto, min(size, 100cqh))) {
+    @supports (block-size: calc-size(auto, min(size, 100cqh))) and (interactivity: inert) {
       ${BROWSING}:has(${BUTTON}) ${LIST} {
         flex: 0 1 auto;
         block-size: calc-size(auto, min(size, 100cqh - var(--workspace-toolbar-height, 36px)));
