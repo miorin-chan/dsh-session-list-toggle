@@ -115,17 +115,16 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
   const workspace: WorkspaceSnapshot = useWorkspaces((value: WorkspaceSnapshot) => value)
   const ids = attentionSessionIds(list, statuses, workspace.archivedSessionIds)
   const pending = new Set(ids)
+  const activeSessionsByGroup = new Map<string, typeof ids>()
   const activeWorkspaces = workspace.items.filter(item => {
-    let hasAttention = false
-    for (const id of item.sessionIds) {
-      if (pending.delete(id)) hasAttention = true
-    }
-    return hasAttention
+    const active = item.sessionIds.filter(id => pending.delete(id))
+    if (active.length === 0) return false
+    activeSessionsByGroup.set(item.workspaceId, active)
+    return true
   })
+  if (pending.size > 0) activeSessionsByGroup.set('', [...pending]) // Native Ungrouped key.
   const row = (key: string) => `[data-row-key="${CSS.escape(key)}"]`
-  const activeKeys = activeWorkspaces.map(item => item.workspaceId as string)
-  if (pending.size > 0) activeKeys.push('') // The original browser's Ungrouped key.
-  const groupRows = activeKeys.map(key => row(`workspace:${key}`))
+  const groupRows = [...activeSessionsByGroup.keys()].map(key => row(`workspace:${key}`))
   const sessionRows = ids.map(id => row(`session:${id}`))
   const keep = [...sessionRows, ...groupRows].join(', ') || ':not(*)'
   const scope = `${BROWSING}:has(${BUTTON}[data-mode="attention"]) ${LIST}`
@@ -141,13 +140,21 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
   })
   const ancestorRows = hiddenDescendants.flatMap(item => item.ancestors)
   const emptyList = `${scope}:not(:has(${[...sessionRows, ...groupRows, ...ancestorRows].join(', ') || ':not(*)'}))`
+  const overflowRules = [...activeSessionsByGroup].map(([key, active]) => {
+    const allRendered = active.map(id => `:has(${row(`session:${id}`)})`).join('')
+    const overflow = row(`overflow:${key}`)
+    return `${scope} div${allRendered} > ${overflow}[aria-expanded="false"] { display: none; }`
+  }).join('')
+  const activeOverflow = [...activeSessionsByGroup.keys()].map(key => row(`overflow:${key}`)).join(', ') || ':not(*)'
+  const group = 'div:has(> [data-row-key^="workspace:"], > span > [data-row-key^="workspace:"])'
   return <style>{`
     ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(', ') || ':not(*)'})),
-    ${scope} div:has(> [data-row-key^="workspace:"]):not(:has(${keep})),
-    ${scope} [data-row-key^="overflow:"]:not(:is(${activeKeys.map(key => row(`overflow:${key}`)).join(', ') || ':not(*)'})),
+    ${scope} ${group}:not(:has(${keep})),
+    ${scope} [data-row-key^="overflow:"]:not(:is(${activeOverflow})),
     ${scope} [data-row-key="empty"] { display: none; }
+    ${overflowRules}
     ${hiddenDescendants.map(({ anchor, ancestors }) => `
-      ${scope}:not(:has(${anchor})) div:has(:is(${ancestors.join(', ')})):has(> [data-row-key^="workspace:"]) {
+      ${scope}:not(:has(${anchor})) ${group}:has(:is(${ancestors.join(', ')})) {
         display: block;
       }
     `).join('')}
