@@ -29,6 +29,8 @@ const SCROLLPORT = '[data-sidebar-scrollport]'
 const HEADER = `${SCROLLPORT} [data-sidebar-workspace-header]`
 const TITLE = `${HEADER} > span:first-child`
 const BUTTON = '[data-dsh-workspace-list-toggle]'
+const LIST = `${SCROLLPORT} [data-sidebar-list-area]`
+const BROWSING = `body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"]))`
 const STYLE = `
   ${BUTTON} { display: none; }
   @supports (anchor-name: --dsh-workspace-list-title) and (position-visibility: anchors-visible) {
@@ -38,9 +40,24 @@ const STYLE = `
     body:has(${BUTTON}) ${HEADER}:not(:has(input[tabindex="0"])) > span:first-child {
       margin-right: 24px;
     }
-    body:has(${TITLE}):has(${BUTTON}[aria-expanded="false"]):not(:has(${HEADER} input[tabindex="0"]))
-      ${SCROLLPORT} [data-sidebar-list-area] { display: none; }
-    body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"])) ${BUTTON} {
+    ${BROWSING}:has(${BUTTON}[aria-expanded="false"]) ${LIST} { display: none; }
+    /* Match the native scroller's viewport cap so long lists start shrinking immediately. */
+    @supports (block-size: calc-size(auto, min(size, 100cqh))) {
+      ${BROWSING}:has(${BUTTON}) ${LIST} {
+        flex: 0 1 auto;
+        block-size: calc-size(auto, min(size, 100cqh - var(--workspace-toolbar-height, 36px)));
+        transition: block-size 180ms ease-in-out, opacity 180ms ease-in-out, visibility 180ms;
+      }
+      ${BROWSING}:has(${BUTTON}[aria-expanded="false"]) ${LIST} {
+        display: block;
+        block-size: 0;
+        opacity: 0;
+        visibility: hidden;
+        interactivity: inert;
+        pointer-events: none;
+      }
+    }
+    ${BROWSING} ${BUTTON} {
       display: grid;
       position: fixed;
       position-anchor: --dsh-workspace-list-title;
@@ -70,7 +87,8 @@ const STYLE = `
   }
   ${BUTTON}[aria-expanded="true"] > svg { transform: rotate(90deg); }
   @media (prefers-reduced-motion: reduce) {
-    ${BUTTON} > svg { transition: none; }
+    ${BUTTON} > svg,
+    ${BROWSING}:has(${BUTTON}) ${LIST} { transition: none; }
   }
 `
 
