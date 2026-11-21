@@ -1,0 +1,5 @@
+# Activates the bundle. The Host half is inert; the Client half ships through
+# package.json `dsh.client` and carries Workspace list toggle.
+- insert:
+    - id: dsh-workspace-list-toggle
+      name: 'dsh-workspace-list-toggle'
