@@ -6,8 +6,9 @@ Use the chevron beside Workspaces or Sessions to cycle from the full list to col
 The filtered list keeps pinned sessions and sessions with pending approvals,
 plan reviews or questions, ongoing work (including subagents), or unread completions.
 In workspace views it keeps matching workspace headings and their tree ancestors.
-Use **Show idle conversations** at the bottom of the filtered list to reveal idle conversations in their usual order.
-Expand a folded group to see its rows. The native per-group row limit still applies.
+Use **Show more idle conversations** at the bottom of the filtered list to reveal up to five at a time in list order.
+Once the open groups have no more idle conversations to show, the button changes to **Show fewer idle conversations**.
+Expand a folded group to include its sessions in paging.
 Search temporarily shows native results and restores the previous mode when closed.
 The next time you enter the filtered list, idle conversations start collapsed.
 The page starts in full-list mode.

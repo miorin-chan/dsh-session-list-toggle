@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { createPortal, flushSync } from 'react-dom'
+import { hasMoreIdle, nextIdlePage } from './idle-page.js'
 
 const rowSelector = '[data-row-key^="session:"], [data-row-key^="workspace:"], [data-row-key^="overflow:"]'
 // ui-workspace 0.2.2-rc.5 stores this view preference locally and exposes no slot prop for it.
@@ -20,21 +21,35 @@ function renderedRows(list: HTMLElement) {
   )
 }
 
-export function IdleControl({ listSelector, scrollportSelector, expanded, onChange, label, emptyLabel, hasArchives }: {
+export function IdleControl({ listSelector, scrollportSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, emptyLabel, hasArchives }: {
   listSelector: string
   scrollportSelector: string
-  expanded: boolean
-  onChange: (expanded: boolean) => void
-  label: string | undefined
+  idle: ReadonlySet<string>
+  idleGroups: ReadonlyMap<string, readonly string[]>
+  shown: readonly string[] | null
+  onChange: (shown: string[] | null) => void
+  moreLabel: string
+  collapseLabel: string
   emptyLabel: string
   hasArchives: boolean
 }) {
   const [mount, setMount] = useState<{ list: HTMLElement; container: HTMLElement } | null>(null)
   const [archivedOnly, setArchivedOnly] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const reveal = useRef<{ rows: Set<HTMLElement>; keyboard: boolean } | null>(null)
   const button = useRef<HTMLButtonElement>(null)
   const list = mount?.list ?? null
-  const watchArchiveFilter = hasArchives && label !== undefined
+  const watchArchiveFilter = hasArchives && idle.size > 0
+  const canCollapse = shown !== null && !hasMore
+
+  useLayoutEffect(() => {
+    if (list === null) return
+    const sync = () => setHasMore(hasMoreIdle(list, idle, idleGroups, shown ?? []))
+    sync()
+    const observer = new MutationObserver(sync)
+    observer.observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded', 'aria-hidden'] })
+    return () => observer.disconnect()
+  }, [list, idle, idleGroups, shown])
 
   useEffect(() => {
     if (!watchArchiveFilter) return
@@ -71,8 +86,10 @@ export function IdleControl({ listSelector, scrollportSelector, expanded, onChan
   useLayoutEffect(() => {
     const before = reveal.current
     reveal.current = null
-    if (!expanded || list === null || before === null) return
-    const added = renderedRows(list).filter(row => !before.rows.has(row))
+    if (shown === null || list === null || before === null) return
+    const addedRows = renderedRows(list).filter(row => !before.rows.has(row))
+    const addedSessions = addedRows.filter(row => row.dataset.rowKey?.startsWith('session:'))
+    const added = addedSessions.length > 0 ? addedSessions : addedRows
     const first = added[0]
     if (first === undefined) return
     const bounds = list.getBoundingClientRect()
@@ -95,22 +112,28 @@ export function IdleControl({ listSelector, scrollportSelector, expanded, onChan
     const target = focusTarget ?? visibleRows[0] ?? first
     if (!isVisible(target)) target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' })
     focusTarget?.focus({ preventScroll: true })
-  }, [expanded, list, scrollportSelector])
+  }, [shown, list, scrollportSelector])
 
   if (mount === null || list === null) return null
   return createPortal(<>
     <div data-dsh-workspace-attention-empty="">{emptyLabel}</div>
-    {label !== undefined && !(watchArchiveFilter && archivedOnly) && (
+    {idle.size > 0 && !(watchArchiveFilter && archivedOnly) && (
       <button
         ref={button}
         type="button"
         data-dsh-workspace-idle-toggle=""
-        aria-expanded={expanded}
+        aria-expanded={shown !== null}
         onClick={event => {
-          if (!expanded) reveal.current = { rows: new Set(renderedRows(list)), keyboard: event.detail === 0 }
-          onChange(!expanded)
+          const selected = shown ?? []
+          if (shown !== null && !hasMoreIdle(list, idle, idleGroups, selected)) {
+            onChange(null)
+            return
+          }
+          reveal.current = { rows: new Set(renderedRows(list)), keyboard: event.detail === 0 }
+          // Keep native row order even when the next row is still behind a group's native page boundary.
+          onChange(nextIdlePage(list, idle, idleGroups, selected, overflow => flushSync(() => overflow.click())))
         }}
-      >{label}</button>
+      >{canCollapse ? collapseLabel : moreLabel}</button>
     )}
   </>, mount.container)
 }

@@ -59,6 +59,62 @@ function sessionVisibility(list, statuses, { archivedSessionIds, pinnedSessionId
 // src/client/idle-control.tsx
 var import_react = require("react");
 var import_react_dom = require("react-dom");
+
+// src/client/idle-page.ts
+var PAGE_SIZE = 5;
+var SESSION = "session:";
+var OVERFLOW = "overflow:";
+var PAGE_ROWS = `[data-row-key^="${SESSION}"], button[data-row-key^="${OVERFLOW}"][aria-expanded="false"]`;
+function pageRows(list) {
+  return [...list.querySelectorAll(PAGE_ROWS)].filter((row) => !row.closest('[aria-hidden="true"]'));
+}
+function nextIdleEntry(list, idle, idleGroups, shown, skippedGroups) {
+  const rows = pageRows(list);
+  const mounted = new Set(rows.map((row) => row.dataset.rowKey));
+  for (const row of rows) {
+    const key = row.dataset.rowKey ?? "";
+    if (key.startsWith(SESSION)) {
+      const id = key.slice(SESSION.length);
+      if (idle.has(id) && !shown.has(id)) return { kind: "session", id };
+    } else if (key.startsWith(OVERFLOW) && row instanceof HTMLButtonElement) {
+      const group = key.slice(OVERFLOW.length);
+      if (!skippedGroups.has(group) && idleGroups.get(group)?.some((id) => !mounted.has(SESSION + id))) {
+        return { kind: "overflow", group, button: row };
+      }
+    }
+  }
+}
+function hasMoreIdle(list, idle, idleGroups, shown) {
+  return nextIdleEntry(list, idle, idleGroups, new Set(shown), /* @__PURE__ */ new Set()) !== void 0;
+}
+function nextIdlePage(list, idle, idleGroups, shown, loadMore) {
+  const rows = pageRows(list);
+  const mounted = new Set(rows.map((row) => row.dataset.rowKey));
+  const selected = new Set(shown);
+  for (const row of rows) {
+    const key = row.dataset.rowKey ?? "";
+    if (!key.startsWith(OVERFLOW)) continue;
+    for (const id of idleGroups.get(key.slice(OVERFLOW.length)) ?? []) {
+      if (!mounted.has(SESSION + id)) selected.delete(id);
+    }
+  }
+  const previousSize = selected.size;
+  const skippedGroups = /* @__PURE__ */ new Set();
+  while (selected.size - previousSize < PAGE_SIZE) {
+    const next = nextIdleEntry(list, idle, idleGroups, selected, skippedGroups);
+    if (next === void 0) break;
+    if (next.kind === "session") {
+      selected.add(next.id);
+    } else {
+      const before = pageRows(list).length;
+      loadMore(next.button);
+      if (pageRows(list).length <= before) skippedGroups.add(next.group);
+    }
+  }
+  return [...selected];
+}
+
+// src/client/idle-control.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
 var rowSelector = '[data-row-key^="session:"], [data-row-key^="workspace:"], [data-row-key^="overflow:"]';
 var workspaceViewKey = "dsh.workspace.view.v5";
@@ -75,13 +131,23 @@ function renderedRows(list) {
     (row) => !row.closest('[aria-hidden="true"]') && row.getClientRects().length > 0
   );
 }
-function IdleControl({ listSelector, scrollportSelector, expanded, onChange, label, emptyLabel, hasArchives }) {
+function IdleControl({ listSelector, scrollportSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, emptyLabel, hasArchives }) {
   const [mount, setMount] = (0, import_react.useState)(null);
   const [archivedOnly, setArchivedOnly] = (0, import_react.useState)(false);
+  const [hasMore, setHasMore] = (0, import_react.useState)(false);
   const reveal = (0, import_react.useRef)(null);
   const button = (0, import_react.useRef)(null);
   const list = mount?.list ?? null;
-  const watchArchiveFilter = hasArchives && label !== void 0;
+  const watchArchiveFilter = hasArchives && idle.size > 0;
+  const canCollapse = shown !== null && !hasMore;
+  (0, import_react.useLayoutEffect)(() => {
+    if (list === null) return;
+    const sync = () => setHasMore(hasMoreIdle(list, idle, idleGroups, shown ?? []));
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-expanded", "aria-hidden"] });
+    return () => observer.disconnect();
+  }, [list, idle, idleGroups, shown]);
   (0, import_react.useEffect)(() => {
     if (!watchArchiveFilter) return;
     const sync = () => setArchivedOnly(isArchivedOnly());
@@ -113,8 +179,10 @@ function IdleControl({ listSelector, scrollportSelector, expanded, onChange, lab
   (0, import_react.useLayoutEffect)(() => {
     const before = reveal.current;
     reveal.current = null;
-    if (!expanded || list === null || before === null) return;
-    const added = renderedRows(list).filter((row) => !before.rows.has(row));
+    if (shown === null || list === null || before === null) return;
+    const addedRows = renderedRows(list).filter((row) => !before.rows.has(row));
+    const addedSessions = addedRows.filter((row) => row.dataset.rowKey?.startsWith("session:"));
+    const added = addedSessions.length > 0 ? addedSessions : addedRows;
     const first = added[0];
     if (first === void 0) return;
     const bounds = list.getBoundingClientRect();
@@ -132,22 +200,27 @@ function IdleControl({ listSelector, scrollportSelector, expanded, onChange, lab
     const target = focusTarget ?? visibleRows[0] ?? first;
     if (!isVisible(target)) target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
     focusTarget?.focus({ preventScroll: true });
-  }, [expanded, list, scrollportSelector]);
+  }, [shown, list, scrollportSelector]);
   if (mount === null || list === null) return null;
   return (0, import_react_dom.createPortal)(/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "data-dsh-workspace-attention-empty": "", children: emptyLabel }),
-    label !== void 0 && !(watchArchiveFilter && archivedOnly) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    idle.size > 0 && !(watchArchiveFilter && archivedOnly) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "button",
       {
         ref: button,
         type: "button",
         "data-dsh-workspace-idle-toggle": "",
-        "aria-expanded": expanded,
+        "aria-expanded": shown !== null,
         onClick: (event) => {
-          if (!expanded) reveal.current = { rows: new Set(renderedRows(list)), keyboard: event.detail === 0 };
-          onChange(!expanded);
+          const selected = shown ?? [];
+          if (shown !== null && !hasMoreIdle(list, idle, idleGroups, selected)) {
+            onChange(null);
+            return;
+          }
+          reveal.current = { rows: new Set(renderedRows(list)), keyboard: event.detail === 0 };
+          onChange(nextIdlePage(list, idle, idleGroups, selected, (overflow) => (0, import_react_dom.flushSync)(() => overflow.click())));
         },
-        children: label
+        children: canCollapse ? collapseLabel : moreLabel
       }
     )
   ] }), mount.container);
@@ -168,8 +241,8 @@ var LABELS = {
     show: "Show full session list",
     empty: "No pinned sessions or sessions needing attention",
     loading: "Loading sessions\u2026",
-    expandIdle: "Show idle conversations",
-    collapseIdle: "Hide idle conversations"
+    expandIdle: "Show more idle conversations",
+    collapseIdle: "Show fewer idle conversations"
   },
   zh: {
     hide: "\u6536\u8D77\u4F1A\u8BDD\u5217\u8868",
@@ -177,8 +250,8 @@ var LABELS = {
     show: "\u663E\u793A\u5168\u90E8\u4F1A\u8BDD",
     empty: "\u6CA1\u6709\u7F6E\u9876\u6216\u9700\u5173\u6CE8\u7684\u4F1A\u8BDD",
     loading: "\u6B63\u5728\u52A0\u8F7D\u4F1A\u8BDD\u2026",
-    expandIdle: "\u5C55\u5F00\u7A7A\u95F2\u5BF9\u8BDD",
-    collapseIdle: "\u6536\u8D77\u7A7A\u95F2\u5BF9\u8BDD"
+    expandIdle: "\u663E\u793A\u66F4\u591A\u7A7A\u95F2\u4F1A\u8BDD",
+    collapseIdle: "\u6536\u8D77\u7A7A\u95F2\u4F1A\u8BDD"
   },
   ja: {
     hide: "\u30BB\u30C3\u30B7\u30E7\u30F3\u4E00\u89A7\u3092\u6298\u308A\u305F\u305F\u3080",
@@ -186,7 +259,7 @@ var LABELS = {
     show: "\u3059\u3079\u3066\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3092\u8868\u793A",
     empty: "\u30D4\u30F3\u7559\u3081\u6E08\u307F\u3084\u8981\u78BA\u8A8D\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u306F\u3042\u308A\u307E\u305B\u3093",
     loading: "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026",
-    expandIdle: "\u5F85\u6A5F\u4E2D\u306E\u4F1A\u8A71\u3092\u8868\u793A",
+    expandIdle: "\u5F85\u6A5F\u4E2D\u306E\u4F1A\u8A71\u3092\u3055\u3089\u306B\u8868\u793A",
     collapseIdle: "\u5F85\u6A5F\u4E2D\u306E\u4F1A\u8A71\u3092\u975E\u8868\u793A"
   },
   de: {
@@ -195,7 +268,7 @@ var LABELS = {
     show: "Alle Sitzungen anzeigen",
     empty: "Keine angehefteten Sitzungen oder Sitzungen mit Handlungsbedarf",
     loading: "Sitzungen werden geladen\u2026",
-    expandIdle: "Inaktive Unterhaltungen anzeigen",
+    expandIdle: "Weitere inaktive Unterhaltungen anzeigen",
     collapseIdle: "Inaktive Unterhaltungen ausblenden"
   },
   es: {
@@ -204,7 +277,7 @@ var LABELS = {
     show: "Mostrar todas las sesiones",
     empty: "No hay sesiones fijadas ni sesiones que requieran atenci\xF3n",
     loading: "Cargando sesiones\u2026",
-    expandIdle: "Mostrar conversaciones inactivas",
+    expandIdle: "Mostrar m\xE1s conversaciones inactivas",
     collapseIdle: "Ocultar conversaciones inactivas"
   },
   fr: {
@@ -213,7 +286,7 @@ var LABELS = {
     show: "Afficher toutes les sessions",
     empty: "Aucune session \xE9pingl\xE9e ou \xE0 suivre",
     loading: "Chargement des sessions\u2026",
-    expandIdle: "Afficher les conversations inactives",
+    expandIdle: "Afficher plus de conversations inactives",
     collapseIdle: "Masquer les conversations inactives"
   },
   pt: {
@@ -222,7 +295,7 @@ var LABELS = {
     show: "Mostrar todas as sess\xF5es",
     empty: "N\xE3o h\xE1 sess\xF5es fixadas nem sess\xF5es que exijam aten\xE7\xE3o",
     loading: "Carregando sess\xF5es\u2026",
-    expandIdle: "Mostrar conversas inativas",
+    expandIdle: "Mostrar mais conversas inativas",
     collapseIdle: "Ocultar conversas inativas"
   },
   ru: {
@@ -231,7 +304,7 @@ var LABELS = {
     show: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0432\u0441\u0435 \u0441\u0435\u0430\u043D\u0441\u044B",
     empty: "\u041D\u0435\u0442 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445 \u0441\u0435\u0430\u043D\u0441\u043E\u0432 \u0438\u043B\u0438 \u0441\u0435\u0430\u043D\u0441\u043E\u0432, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0445 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F",
     loading: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0441\u0435\u0430\u043D\u0441\u043E\u0432\u2026",
-    expandIdle: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u043D\u0435\u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0435 \u0434\u0438\u0430\u043B\u043E\u0433\u0438",
+    expandIdle: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u0434\u0438\u0430\u043B\u043E\u0433\u043E\u0432",
     collapseIdle: "\u0421\u043A\u0440\u044B\u0442\u044C \u043D\u0435\u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0435 \u0434\u0438\u0430\u043B\u043E\u0433\u0438"
   }
 };
@@ -309,31 +382,32 @@ var STYLE = `
 var nextMode = { all: "collapsed", collapsed: "attention", attention: "all" };
 var nextLabel = { all: "hide", collapsed: "attention", attention: "show" };
 function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }) {
-  const [showIdle, setShowIdle] = (0, import_react2.useState)(false);
+  const [shown, setShown] = (0, import_react2.useState)(null);
+  const showIdle = shown !== null;
   const list = useSessions((value) => value);
   const statuses = useSessionStatus((value) => value);
   const workspace = useWorkspaces((value) => value);
   const { attention, idle } = sessionVisibility(list, statuses, workspace);
   const idleIds = new Set(idle);
-  const ids = showIdle ? [...attention, ...idle] : attention;
+  const selected = new Set(shown);
+  const ids = [...attention, ...idle.filter((id) => selected.has(id))];
   const pending = new Set(ids);
   const looseIdle = new Set(idle);
   const activeSessionsByGroup = /* @__PURE__ */ new Map();
-  const idleWorkspaces = /* @__PURE__ */ new Set();
-  const activeWorkspaces = workspace.items.filter((item) => {
-    for (const id of item.sessionIds) {
-      if (idleIds.has(id)) idleWorkspaces.add(item.workspaceId);
-      looseIdle.delete(id);
-    }
+  const idleGroups = /* @__PURE__ */ new Map();
+  for (const item of workspace.items) {
+    const groupIdle = item.sessionIds.filter((id) => looseIdle.delete(id));
+    if (groupIdle.length > 0) idleGroups.set(item.workspaceId, groupIdle);
     const active = item.sessionIds.filter((id) => pending.delete(id));
-    if (active.length === 0) return false;
-    activeSessionsByGroup.set(item.workspaceId, active);
-    return true;
-  });
+    if (active.length > 0) activeSessionsByGroup.set(item.workspaceId, active);
+  }
   if (pending.size > 0) activeSessionsByGroup.set("", [...pending]);
-  if (looseIdle.size > 0) idleWorkspaces.add("");
+  if (looseIdle.size > 0) idleGroups.set("", [...looseIdle]);
+  const keptGroups = new Set(activeSessionsByGroup.keys());
+  if (showIdle) for (const key of idleGroups.keys()) keptGroups.add(key);
+  const activeWorkspaces = workspace.items.filter((item) => keptGroups.has(item.workspaceId));
   const row = (key) => `[data-row-key="${CSS.escape(key)}"]`;
-  const groupRows = [...activeSessionsByGroup.keys()].map((key) => row(`workspace:${key}`));
+  const groupRows = [...keptGroups].map((key) => row(`workspace:${key}`));
   const sessionRows = ids.map((id) => row(`session:${id}`));
   const keep = [...sessionRows, ...groupRows].join(", ") || ":not(*)";
   const scope = `${BROWSING}:has(${BUTTON}[data-mode="attention"]) ${LIST}`;
@@ -354,8 +428,8 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }) {
   const group = 'div:has(> [data-row-key^="workspace:"], > span > [data-row-key^="workspace:"])';
   const idleRows = [
     ...idle.map((id) => row(`session:${id}`)),
-    ...[...idleWorkspaces].map((id) => row(`workspace:${id}`)),
-    ...workspace.items.filter((item) => idleWorkspaces.has(item.workspaceId)).flatMap((item) => ancestorSelectors(item.path))
+    ...[...idleGroups.keys()].map((id) => row(`workspace:${id}`)),
+    ...workspace.items.filter((item) => idleGroups.has(item.workspaceId)).flatMap((item) => ancestorSelectors(item.path))
   ].join(", ");
   const idleScope = `${scope}:has(${idleRows || ":not(*)"}):has(> ${LIST_END} > ${IDLE_BUTTON})`;
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
@@ -363,10 +437,8 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }) {
       ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(", ") || ":not(*)"})),
       ${scope} ${group}:not(:has(${keep})),
       ${scope} [data-row-key="empty"] { display: none; }
-      ${showIdle ? "" : `
-        ${scope} [data-row-key^="overflow:"]:not(:is(${activeOverflow})) { display: none; }
-        ${overflowRules}
-      `}
+      ${scope} [data-row-key^="overflow:"]:not(:is(${activeOverflow})) { display: none; }
+      ${overflowRules}
       ${hiddenDescendants.map(({ anchor, ancestors }) => `
         ${scope}:not(:has(${anchor})) ${group}:has(:is(${ancestors.join(", ")})) {
           display: block;
@@ -421,9 +493,12 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }) {
       {
         listSelector: LIST,
         scrollportSelector: SCROLLPORT,
-        expanded: showIdle,
-        onChange: setShowIdle,
-        label: idle.length > 0 ? t(showIdle ? "collapseIdle" : "expandIdle") : void 0,
+        idle: idleIds,
+        idleGroups,
+        shown,
+        onChange: setShown,
+        moreLabel: t("expandIdle"),
+        collapseLabel: t("collapseIdle"),
         emptyLabel: t(list.phase === "pending" ? "loading" : "empty"),
         hasArchives: workspace.archivedSessionIds.length > 0
       }

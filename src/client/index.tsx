@@ -20,21 +20,21 @@ const EMPTY_ICON = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://
 
 const LABELS = {
   en: { hide: 'Collapse session list', attention: 'Show pinned sessions and sessions needing attention', show: 'Show full session list', empty: 'No pinned sessions or sessions needing attention', loading: 'Loading sessions…',
-    expandIdle: 'Show idle conversations', collapseIdle: 'Hide idle conversations' },
+    expandIdle: 'Show more idle conversations', collapseIdle: 'Show fewer idle conversations' },
   zh: { hide: '收起会话列表', attention: '显示置顶和需关注的会话', show: '显示全部会话', empty: '没有置顶或需关注的会话', loading: '正在加载会话…',
-    expandIdle: '展开空闲对话', collapseIdle: '收起空闲对话' },
+    expandIdle: '显示更多空闲会话', collapseIdle: '收起空闲会话' },
   ja: { hide: 'セッション一覧を折りたたむ', attention: 'ピン留め済みと要確認のセッションを表示', show: 'すべてのセッションを表示', empty: 'ピン留め済みや要確認のセッションはありません', loading: '読み込み中…',
-    expandIdle: '待機中の会話を表示', collapseIdle: '待機中の会話を非表示' },
+    expandIdle: '待機中の会話をさらに表示', collapseIdle: '待機中の会話を非表示' },
   de: { hide: 'Sitzungsliste einklappen', attention: 'Angeheftete Sitzungen und Sitzungen mit Handlungsbedarf anzeigen', show: 'Alle Sitzungen anzeigen', empty: 'Keine angehefteten Sitzungen oder Sitzungen mit Handlungsbedarf', loading: 'Sitzungen werden geladen…',
-    expandIdle: 'Inaktive Unterhaltungen anzeigen', collapseIdle: 'Inaktive Unterhaltungen ausblenden' },
+    expandIdle: 'Weitere inaktive Unterhaltungen anzeigen', collapseIdle: 'Inaktive Unterhaltungen ausblenden' },
   es: { hide: 'Contraer la lista de sesiones', attention: 'Mostrar las sesiones fijadas y las que requieren atención', show: 'Mostrar todas las sesiones', empty: 'No hay sesiones fijadas ni sesiones que requieran atención', loading: 'Cargando sesiones…',
-    expandIdle: 'Mostrar conversaciones inactivas', collapseIdle: 'Ocultar conversaciones inactivas' },
+    expandIdle: 'Mostrar más conversaciones inactivas', collapseIdle: 'Ocultar conversaciones inactivas' },
   fr: { hide: 'Replier la liste des sessions', attention: 'Afficher les sessions épinglées et celles à suivre', show: 'Afficher toutes les sessions', empty: 'Aucune session épinglée ou à suivre', loading: 'Chargement des sessions…',
-    expandIdle: 'Afficher les conversations inactives', collapseIdle: 'Masquer les conversations inactives' },
+    expandIdle: 'Afficher plus de conversations inactives', collapseIdle: 'Masquer les conversations inactives' },
   pt: { hide: 'Recolher a lista de sessões', attention: 'Mostrar sessões fixadas e sessões que exigem atenção', show: 'Mostrar todas as sessões', empty: 'Não há sessões fixadas nem sessões que exijam atenção', loading: 'Carregando sessões…',
-    expandIdle: 'Mostrar conversas inativas', collapseIdle: 'Ocultar conversas inativas' },
+    expandIdle: 'Mostrar mais conversas inativas', collapseIdle: 'Ocultar conversas inativas' },
   ru: { hide: 'Свернуть список сеансов', attention: 'Показать закреплённые сеансы и сеансы, требующие внимания', show: 'Показать все сеансы', empty: 'Нет закреплённых сеансов или сеансов, требующих внимания', loading: 'Загрузка сеансов…',
-    expandIdle: 'Показать неактивные диалоги', collapseIdle: 'Скрыть неактивные диалоги' },
+    expandIdle: 'Показать больше неактивных диалогов', collapseIdle: 'Скрыть неактивные диалоги' },
 } as const
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -129,31 +129,33 @@ interface AttentionProps {
 }
 
 function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: AttentionProps) {
-  const [showIdle, setShowIdle] = useState(false)
+  const [shown, setShown] = useState<string[] | null>(null)
+  const showIdle = shown !== null
   const list = useSessions((value: SessionListState) => value)
   const statuses = useSessionStatus((value: SessionStatusSnapshot) => value)
   const workspace: WorkspaceSnapshot = useWorkspaces((value: WorkspaceSnapshot) => value)
   const { attention, idle } = sessionVisibility(list, statuses, workspace)
   const idleIds = new Set(idle)
-  const ids = showIdle ? [...attention, ...idle] : attention
+  const selected = new Set(shown)
+  const ids = [...attention, ...idle.filter(id => selected.has(id))]
   const pending = new Set(ids)
   const looseIdle = new Set(idle)
   const activeSessionsByGroup = new Map<string, typeof ids>()
-  const idleWorkspaces = new Set<string>()
-  const activeWorkspaces = workspace.items.filter(item => {
-    for (const id of item.sessionIds) {
-      if (idleIds.has(id)) idleWorkspaces.add(item.workspaceId)
-      looseIdle.delete(id)
-    }
+  const idleGroups = new Map<string, readonly string[]>()
+  for (const item of workspace.items) {
+    const groupIdle = item.sessionIds.filter(id => looseIdle.delete(id))
+    if (groupIdle.length > 0) idleGroups.set(item.workspaceId, groupIdle)
     const active = item.sessionIds.filter(id => pending.delete(id))
-    if (active.length === 0) return false
-    activeSessionsByGroup.set(item.workspaceId, active)
-    return true
-  })
+    if (active.length > 0) activeSessionsByGroup.set(item.workspaceId, active)
+  }
   if (pending.size > 0) activeSessionsByGroup.set('', [...pending]) // Native Ungrouped key.
-  if (looseIdle.size > 0) idleWorkspaces.add('')
+  if (looseIdle.size > 0) idleGroups.set('', [...looseIdle])
+  const keptGroups = new Set(activeSessionsByGroup.keys())
+  // Keep idle workspace headings available so folded groups can still be opened by hand.
+  if (showIdle) for (const key of idleGroups.keys()) keptGroups.add(key)
+  const activeWorkspaces = workspace.items.filter(item => keptGroups.has(item.workspaceId))
   const row = (key: string) => `[data-row-key="${CSS.escape(key)}"]`
-  const groupRows = [...activeSessionsByGroup.keys()].map(key => row(`workspace:${key}`))
+  const groupRows = [...keptGroups].map(key => row(`workspace:${key}`))
   const sessionRows = ids.map(id => row(`session:${id}`))
   const keep = [...sessionRows, ...groupRows].join(', ') || ':not(*)'
   const scope = `${BROWSING}:has(${BUTTON}[data-mode="attention"]) ${LIST}`
@@ -179,8 +181,8 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
   const group = 'div:has(> [data-row-key^="workspace:"], > span > [data-row-key^="workspace:"])'
   const idleRows = [
     ...idle.map(id => row(`session:${id}`)),
-    ...[...idleWorkspaces].map(id => row(`workspace:${id}`)),
-    ...workspace.items.filter(item => idleWorkspaces.has(item.workspaceId)).flatMap(item => ancestorSelectors(item.path)),
+    ...[...idleGroups.keys()].map(id => row(`workspace:${id}`)),
+    ...workspace.items.filter(item => idleGroups.has(item.workspaceId)).flatMap(item => ancestorSelectors(item.path)),
   ].join(', ')
   const idleScope = `${scope}:has(${idleRows || ':not(*)'}):has(> ${LIST_END} > ${IDLE_BUTTON})`
   return <>
@@ -188,10 +190,8 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
       ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(', ') || ':not(*)'})),
       ${scope} ${group}:not(:has(${keep})),
       ${scope} [data-row-key="empty"] { display: none; }
-      ${showIdle ? '' : `
-        ${scope} [data-row-key^="overflow:"]:not(:is(${activeOverflow})) { display: none; }
-        ${overflowRules}
-      `}
+      ${scope} [data-row-key^="overflow:"]:not(:is(${activeOverflow})) { display: none; }
+      ${overflowRules}
       ${hiddenDescendants.map(({ anchor, ancestors }) => `
         ${scope}:not(:has(${anchor})) ${group}:has(:is(${ancestors.join(', ')})) {
           display: block;
@@ -244,9 +244,12 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
     <IdleControl
       listSelector={LIST}
       scrollportSelector={SCROLLPORT}
-      expanded={showIdle}
-      onChange={setShowIdle}
-      label={idle.length > 0 ? t(showIdle ? 'collapseIdle' : 'expandIdle') : undefined}
+      idle={idleIds}
+      idleGroups={idleGroups}
+      shown={shown}
+      onChange={setShown}
+      moreLabel={t('expandIdle')}
+      collapseLabel={t('collapseIdle')}
       emptyLabel={t(list.phase === 'pending' ? 'loading' : 'empty')}
       hasArchives={workspace.archivedSessionIds.length > 0}
     />
