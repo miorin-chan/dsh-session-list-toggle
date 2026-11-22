@@ -51,6 +51,7 @@ const TITLE = `${HEADER} > span:first-child`
 const BUTTON = '[data-dsh-workspace-list-toggle]'
 const LIST = `${SCROLLPORT} [data-sidebar-list-area]`
 const SESSION_ROW = '[data-row-key^="session:"]'
+const LIST_END = '[data-dsh-workspace-list-end]'
 const IDLE_BUTTON = '[data-dsh-workspace-idle-toggle]'
 const ATTENTION_EMPTY = '[data-dsh-workspace-attention-empty]'
 const BROWSING = `body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"]))`
@@ -181,6 +182,7 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
     ...[...idleWorkspaces].map(id => row(`workspace:${id}`)),
     ...workspace.items.filter(item => idleWorkspaces.has(item.workspaceId)).flatMap(item => ancestorSelectors(item.path)),
   ].join(', ')
+  const idleScope = `${scope}:has(${idleRows || ':not(*)'}):has(> ${LIST_END} > ${IDLE_BUTTON})`
   return <>
     <style>{`
       ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(', ') || ':not(*)'})),
@@ -195,8 +197,13 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
           display: block;
         }
       `).join('')}
-      [data-dsh-workspace-list-end], ${IDLE_BUTTON}, ${ATTENTION_EMPTY} { display: none; }
-      ${scope} > [data-dsh-workspace-list-end] { display: block; }
+      ${LIST_END}, ${IDLE_BUTTON}, ${ATTENTION_EMPTY} { display: none; }
+      ${scope} > ${LIST_END} { display: block; }
+      /* The native tree clears the bottom fade with 16px after its last row.
+         When the idle button is present, put that clearance after the button. */
+      ${idleScope} [role="tree"] { padding-bottom: 0; }
+      ${idleScope} > ${LIST_END} { padding-bottom: 16px; }
+      ${idleScope} ${IDLE_BUTTON} { display: block; }
       ${emptyList} ${ATTENTION_EMPTY} {
         display: block;
         padding-inline: 12px;
@@ -214,27 +221,24 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
         background-color: var(--dsw-alias-label-caption);
         mask: url("${EMPTY_ICON}") center / contain no-repeat;
       }
-      ${idleRows === '' ? '' : `${scope}:has(${idleRows}) ${IDLE_BUTTON} { display: block; }`}
-      /* WorkspaceBrowser.module.css .sessionOverflowButton (DSH ui-workspace 0.2.2-rc.5). */
+      /* WorkspaceBrowser.module.css .sessionOverflowButton (DSH ui-workspace 0.2.2-rc.5), at root depth. */
       ${IDLE_BUTTON} {
-        inline-size: 100%;
-        block-size: 28px;
-        margin-block: 4px 16px;
-        padding: 0 var(--dsh-sidebar-row-padding, 8px);
-        border: 0;
+        width: 100%;
+        height: 28px;
+        padding: 0 var(--dsh-sidebar-row-padding) 0 calc(var(--dsh-sidebar-row-padding) + 16px + var(--dsh-sidebar-label-gap));
+        border: none;
         border-radius: var(--dsw-radius-sm);
         background: transparent;
         color: var(--dsw-alias-label-tertiary);
         font-size: 12px;
-        text-align: start;
+        text-align: left;
         cursor: pointer;
       }
       @media (hover: hover) {
-        ${IDLE_BUTTON}:hover { color: var(--dsw-alias-label-secondary); }
-      }
-      ${IDLE_BUTTON}:focus-visible {
-        outline: var(--dsw-focus-ring-width, 1px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
-        outline-offset: -2px;
+        ${IDLE_BUTTON}:hover {
+          background: transparent;
+          color: var(--dsw-alias-label-secondary);
+        }
       }
     `}</style>
     <IdleControl
