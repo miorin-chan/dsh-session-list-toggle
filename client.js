@@ -37,17 +37,18 @@ module.exports = __toCommonJS(index_exports);
 var import_react2 = require("react");
 
 // src/client/attention.ts
-function sessionVisibility(list, statuses, { archivedSessionIds, pinnedSessionIds }, drafts) {
+function sessionVisibility(list, statuses, { archivedSessionIds, pinnedSessionIds }, { current, drafts } = {}) {
   const archived = new Set(archivedSessionIds);
   const pinned = new Set(pinnedSessionIds);
   const attention = [];
   const idle = [];
   for (const id of list.ids) {
     const session = list.byId[id];
-    if (session === void 0 || session.origin === "subagent" || archived.has(id)) continue;
+    if (session === void 0 || session.origin === "subagent") continue;
+    if (id !== current && archived.has(id)) continue;
     const status = statuses.get(id);
     const pending = status?.pendingInteraction?.kind;
-    const needsAttention = pinned.has(id) || drafts?.has(id) || pending === "approval" || pending === "plan-review" || pending === "question" || (status?.running ?? session.running) || status?.completionUnread || list.projectionsBySession[id]?.values.subagentCatalog?.some(
+    const needsAttention = id === current || pinned.has(id) || drafts?.has(id) || pending === "approval" || pending === "plan-review" || pending === "question" || (status?.running ?? session.running) || status?.completionUnread || list.projectionsBySession[id]?.values.subagentCatalog?.some(
       (child) => statuses.get(child.id)?.running ?? list.byId[child.id]?.running ?? false
     );
     if (needsAttention) attention.push(id);
@@ -360,7 +361,7 @@ var EMPTY_ICON = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://ww
 var LABELS = {
   en: {
     hide: "Collapse session list",
-    attention: "Show pinned sessions and sessions needing attention",
+    attention: "Show the current session, pinned sessions, and sessions needing attention",
     show: "Show full session list",
     empty: "No pinned sessions or sessions needing attention",
     loading: "Loading sessions\u2026",
@@ -369,7 +370,7 @@ var LABELS = {
   },
   zh: {
     hide: "\u6536\u8D77\u4F1A\u8BDD\u5217\u8868",
-    attention: "\u663E\u793A\u7F6E\u9876\u548C\u9700\u5173\u6CE8\u7684\u4F1A\u8BDD",
+    attention: "\u663E\u793A\u5F53\u524D\u3001\u7F6E\u9876\u548C\u9700\u5173\u6CE8\u7684\u4F1A\u8BDD",
     show: "\u663E\u793A\u5168\u90E8\u4F1A\u8BDD",
     empty: "\u6CA1\u6709\u7F6E\u9876\u6216\u9700\u5173\u6CE8\u7684\u4F1A\u8BDD",
     loading: "\u6B63\u5728\u52A0\u8F7D\u4F1A\u8BDD\u2026",
@@ -378,7 +379,7 @@ var LABELS = {
   },
   ja: {
     hide: "\u30BB\u30C3\u30B7\u30E7\u30F3\u4E00\u89A7\u3092\u6298\u308A\u305F\u305F\u3080",
-    attention: "\u30D4\u30F3\u7559\u3081\u6E08\u307F\u3068\u8981\u78BA\u8A8D\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3092\u8868\u793A",
+    attention: "\u73FE\u5728\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3001\u30D4\u30F3\u7559\u3081\u6E08\u307F\u3001\u8981\u78BA\u8A8D\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3092\u8868\u793A",
     show: "\u3059\u3079\u3066\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3092\u8868\u793A",
     empty: "\u30D4\u30F3\u7559\u3081\u6E08\u307F\u3084\u8981\u78BA\u8A8D\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u306F\u3042\u308A\u307E\u305B\u3093",
     loading: "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026",
@@ -387,7 +388,7 @@ var LABELS = {
   },
   de: {
     hide: "Sitzungsliste einklappen",
-    attention: "Angeheftete Sitzungen und Sitzungen mit Handlungsbedarf anzeigen",
+    attention: "Die aktuelle Sitzung, angeheftete Sitzungen und Sitzungen mit Handlungsbedarf anzeigen",
     show: "Alle Sitzungen anzeigen",
     empty: "Keine angehefteten Sitzungen oder Sitzungen mit Handlungsbedarf",
     loading: "Sitzungen werden geladen\u2026",
@@ -396,7 +397,7 @@ var LABELS = {
   },
   es: {
     hide: "Contraer la lista de sesiones",
-    attention: "Mostrar las sesiones fijadas y las que requieren atenci\xF3n",
+    attention: "Mostrar la sesi\xF3n actual, las fijadas y las que requieren atenci\xF3n",
     show: "Mostrar todas las sesiones",
     empty: "No hay sesiones fijadas ni sesiones que requieran atenci\xF3n",
     loading: "Cargando sesiones\u2026",
@@ -405,7 +406,7 @@ var LABELS = {
   },
   fr: {
     hide: "Replier la liste des sessions",
-    attention: "Afficher les sessions \xE9pingl\xE9es et celles \xE0 suivre",
+    attention: "Afficher la session en cours, les sessions \xE9pingl\xE9es et celles \xE0 suivre",
     show: "Afficher toutes les sessions",
     empty: "Aucune session \xE9pingl\xE9e ou \xE0 suivre",
     loading: "Chargement des sessions\u2026",
@@ -414,7 +415,7 @@ var LABELS = {
   },
   pt: {
     hide: "Recolher a lista de sess\xF5es",
-    attention: "Mostrar sess\xF5es fixadas e sess\xF5es que exigem aten\xE7\xE3o",
+    attention: "Mostrar a sess\xE3o atual, as sess\xF5es fixadas e as que exigem aten\xE7\xE3o",
     show: "Mostrar todas as sess\xF5es",
     empty: "N\xE3o h\xE1 sess\xF5es fixadas nem sess\xF5es que exijam aten\xE7\xE3o",
     loading: "Carregando sess\xF5es\u2026",
@@ -423,7 +424,7 @@ var LABELS = {
   },
   ru: {
     hide: "\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0435\u0430\u043D\u0441\u043E\u0432",
-    attention: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0435 \u0441\u0435\u0430\u043D\u0441\u044B \u0438 \u0441\u0435\u0430\u043D\u0441\u044B, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0435 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F",
+    attention: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u0441\u0435\u0430\u043D\u0441, \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0435 \u0441\u0435\u0430\u043D\u0441\u044B \u0438 \u0441\u0435\u0430\u043D\u0441\u044B, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0435 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F",
     show: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0432\u0441\u0435 \u0441\u0435\u0430\u043D\u0441\u044B",
     empty: "\u041D\u0435\u0442 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445 \u0441\u0435\u0430\u043D\u0441\u043E\u0432 \u0438\u043B\u0438 \u0441\u0435\u0430\u043D\u0441\u043E\u0432, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0445 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F",
     loading: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0441\u0435\u0430\u043D\u0441\u043E\u0432\u2026",
@@ -504,14 +505,16 @@ var STYLE = `
 `;
 var nextMode = { all: "collapsed", collapsed: "attention", attention: "all" };
 var nextLabel = { all: "hide", collapsed: "attention", attention: "show" };
-function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t, draftSource }) {
+function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorkspaces, t, draftSource }) {
   const [shown, setShown] = (0, import_react2.useState)(null);
   const showIdle = shown !== null;
   const list = useSessions((value) => value);
   const statuses = useSessionStatus((value) => value);
   const workspace = useWorkspaces((value) => value);
   const drafts = (0, import_react2.useSyncExternalStore)(draftSource.subscribe, draftSource.getSnapshot);
-  const { attention, idle } = sessionVisibility(list, statuses, workspace, drafts);
+  const panelActive = usePanelInfo((info) => info.activePanelId !== null);
+  const current = panelActive ? void 0 : Object.values(list.byId).find((session) => (session.retainedBy.mainView ?? 0) > 0)?.id;
+  const { attention, idle } = sessionVisibility(list, statuses, workspace, { current, drafts });
   const idleIds = new Set(idle);
   const selected = new Set(shown);
   const ids = [...attention, ...idle.filter((id) => selected.has(id))];
@@ -640,7 +643,7 @@ function apply(ctx) {
     name: "sidebar.footer.action",
     id: NS,
     locale: NS
-  }, function ListToggle({ t, wide, useSessions, useSessionStatus, useWorkspaces }) {
+  }, function ListToggle({ t, wide, usePanelInfo, useSessions, useSessionStatus, useWorkspaces }) {
     const [mode, setMode] = (0, import_react2.useState)(listMode);
     if (!wide) return null;
     const label = t(nextLabel[mode]);
@@ -676,7 +679,7 @@ function apply(ctx) {
           )
         }
       ),
-      mode === "attention" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AttentionFilter, { ...{ t, useSessions, useSessionStatus, useWorkspaces, draftSource } })
+      mode === "attention" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AttentionFilter, { ...{ t, usePanelInfo, useSessions, useSessionStatus, useWorkspaces, draftSource } })
     ] });
   }));
 }

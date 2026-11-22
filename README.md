@@ -3,10 +3,12 @@
 [简体中文](README.zh.md)
 
 Use the chevron beside Workspaces or Sessions to cycle through **All → Collapsed → Needs attention**.
-**Needs attention** keeps pinned sessions and sessions with pending approvals,
-plan reviews or questions, ongoing work (including subagents), or unread completions.
+**Needs attention** keeps the current session in its usual group and position.
+It also keeps pinned sessions and sessions with pending approvals, plan reviews or questions,
+ongoing work (including subagents), or unread completions.
 It also keeps sessions with unsent drafts when **Session draft** is enabled.
 In workspace views it keeps matching workspace headings and their tree ancestors.
+If the current session is in a folded workspace, expand that group to see it.
 Use **Show more idle conversations** at the bottom of the list to reveal up to five at a time in list order.
 Once the open groups have no more idle conversations to show, the button changes to **Show fewer idle conversations**.
 Expand a folded group to include its sessions in paging.

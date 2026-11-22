@@ -41,6 +41,37 @@ test('finds attention rows across the catalog without consulting workspace expan
   assert.deepEqual(sessionVisibility(list, statuses, workspace).idle, ['parent-in-folded-workspace', 'idle'])
 })
 
+test('keeps the current session through read and focus changes without counting it as idle', () => {
+  const list = catalog([
+    session('first'),
+    session('running', { running: true }),
+    session('second'),
+  ])
+  const workspace = { archivedSessionIds: [], pinnedSessionIds: [] }
+  const statuses = new Map([['first', status({ completionUnread: true })]])
+
+  assert.deepEqual(sessionVisibility(list, statuses, workspace, { current: 'first' }), {
+    attention: ['first', 'running'], idle: ['second'],
+  })
+  statuses.set('first', status({ completionUnread: false }))
+  assert.deepEqual(sessionVisibility(list, statuses, workspace, { current: 'first' }), {
+    attention: ['first', 'running'], idle: ['second'],
+  })
+  assert.deepEqual(sessionVisibility(list, statuses, workspace, { current: 'second' }), {
+    attention: ['running', 'second'], idle: ['first'],
+  })
+  assert.deepEqual(sessionVisibility(list, statuses, workspace), {
+    attention: ['running'], idle: ['first', 'second'],
+  })
+  const archived = { ...workspace, archivedSessionIds: ['first'] }
+  assert.deepEqual(sessionVisibility(list, statuses, archived, { current: 'first' }), {
+    attention: ['first', 'running'], idle: ['second'],
+  })
+  assert.deepEqual(sessionVisibility(list, statuses, archived, { current: 'second' }), {
+    attention: ['running', 'second'], idle: [],
+  })
+})
+
 test('keeps sessions with drafts and drops the draft criterion when the source is absent', () => {
   const list = catalog([
     session('draft'),
@@ -53,7 +84,7 @@ test('keeps sessions with drafts and drops the draft criterion when the source i
   const workspace = { archivedSessionIds: ['archived'], pinnedSessionIds: [] }
   const drafts = new Set(['draft', 'new-draft', 'archived', 'subagent', 'missing'])
 
-  assert.deepEqual(sessionVisibility(list, statuses, workspace, drafts), {
+  assert.deepEqual(sessionVisibility(list, statuses, workspace, { drafts }), {
     attention: ['draft', 'new-draft'], idle: ['idle'],
   })
   assert.deepEqual(sessionVisibility(list, statuses, workspace), {

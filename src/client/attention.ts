@@ -6,7 +6,7 @@ export function sessionVisibility(
   list: SessionListState,
   statuses: SessionStatusSnapshot,
   { archivedSessionIds, pinnedSessionIds }: Pick<WorkspaceSnapshot, 'archivedSessionIds' | 'pinnedSessionIds'>,
-  drafts?: ReadonlySet<string>,
+  { current, drafts }: { current?: SessionSummary['id']; drafts?: ReadonlySet<string> } = {},
 ) {
   const archived = new Set(archivedSessionIds)
   const pinned = new Set(pinnedSessionIds)
@@ -14,10 +14,11 @@ export function sessionVisibility(
   const idle: SessionSummary['id'][] = []
   for (const id of list.ids) {
     const session = list.byId[id]
-    if (session === undefined || session.origin === 'subagent' || archived.has(id)) continue
+    if (session === undefined || session.origin === 'subagent') continue
+    if (id !== current && archived.has(id)) continue
     const status = statuses.get(id)
     const pending = status?.pendingInteraction?.kind
-    const needsAttention = pinned.has(id) || drafts?.has(id)
+    const needsAttention = id === current || pinned.has(id) || drafts?.has(id)
       || pending === 'approval' || pending === 'plan-review' || pending === 'question'
       || (status?.running ?? session.running) || status?.completionUnread
       || list.projectionsBySession[id]?.values.subagentCatalog?.some(
