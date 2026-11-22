@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Three sidebar list modes",
-    "description": "Click the chevron beside Workspaces or Sessions to cycle through All → Collapsed → Needs attention. The last mode shows pinned sessions, sessions that are running or awaiting approval, plan review, or an answer, and completed sessions you haven't read yet."
+    "description": "Click the chevron beside Workspaces or Sessions to cycle through All → Collapsed → Needs attention. Needs attention shows pinned sessions and sessions with ongoing work (including subagents), pending approvals, plan reviews or questions, or unread completions."
   }
 }
