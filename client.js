@@ -61,62 +61,73 @@ var import_react = require("react");
 var import_react_dom = require("react-dom");
 
 // src/client/idle-page.ts
-var PAGE_SIZE = 5;
+var IDLE_PAGE_SIZE = 5;
 var SESSION = "session:";
 var OVERFLOW = "overflow:";
 var PAGE_ROWS = `[data-row-key^="${SESSION}"], button[data-row-key^="${OVERFLOW}"][aria-expanded="false"]`;
-function pageRows(list) {
-  return [...list.querySelectorAll(PAGE_ROWS)].filter((row) => !row.closest('[aria-hidden="true"]'));
-}
-function nextIdleEntry(list, idle, idleGroups, shown, skippedGroups) {
-  const rows = pageRows(list);
+function scanIdlePage(list, idle, idleGroups, shown, remaining) {
+  const rows = [...list.querySelectorAll(PAGE_ROWS)].filter((row) => !row.closest('[aria-hidden="true"]'));
   const mounted = new Set(rows.map((row) => row.dataset.rowKey));
+  const selected = new Set(shown);
+  const boundaries = /* @__PURE__ */ new Set();
+  for (const row of rows) {
+    if (!(row instanceof HTMLButtonElement)) continue;
+    const group = row.dataset.rowKey?.slice(OVERFLOW.length) ?? "";
+    const missing = idleGroups.get(group)?.filter((id) => !mounted.has(SESSION + id)) ?? [];
+    if (missing.length === 0) continue;
+    for (const id of missing) selected.delete(id);
+    boundaries.add(row);
+  }
+  const added = [];
+  let boundary;
   for (const row of rows) {
     const key = row.dataset.rowKey ?? "";
     if (key.startsWith(SESSION)) {
       const id = key.slice(SESSION.length);
-      if (idle.has(id) && !shown.has(id)) return { kind: "session", id };
-    } else if (key.startsWith(OVERFLOW) && row instanceof HTMLButtonElement) {
-      const group = key.slice(OVERFLOW.length);
-      if (!skippedGroups.has(group) && idleGroups.get(group)?.some((id) => !mounted.has(SESSION + id))) {
-        return { kind: "overflow", group, button: row };
-      }
+      if (!idle.has(id) || selected.has(id)) continue;
+      if (added.length === remaining) return { shown: [...selected], added, hasMore: true, boundary };
+      selected.add(id);
+      added.push(id);
+    } else if (row instanceof HTMLButtonElement && boundaries.has(row)) {
+      if (added.length < remaining) boundary = row;
+      return { shown: [...selected], added, hasMore: true, boundary };
     }
   }
+  return { shown: [...selected], added, hasMore: false, boundary };
 }
-function hasMoreIdle(list, idle, idleGroups, shown) {
-  return nextIdleEntry(list, idle, idleGroups, new Set(shown), /* @__PURE__ */ new Set()) !== void 0;
-}
-function nextIdlePage(list, idle, idleGroups, shown, loadMore) {
-  const rows = pageRows(list);
-  const mounted = new Set(rows.map((row) => row.dataset.rowKey));
-  const selected = new Set(shown);
-  for (const row of rows) {
-    const key = row.dataset.rowKey ?? "";
-    if (!key.startsWith(OVERFLOW)) continue;
-    for (const id of idleGroups.get(key.slice(OVERFLOW.length)) ?? []) {
-      if (!mounted.has(SESSION + id)) selected.delete(id);
+function loadNativePage(button, signal) {
+  return new Promise((resolve) => {
+    const parent = button.parentElement;
+    if (parent === null || signal.aborted || button.getAttribute("aria-expanded") !== "false") {
+      resolve(false);
+      return;
     }
-  }
-  const previousSize = selected.size;
-  const skippedGroups = /* @__PURE__ */ new Set();
-  while (selected.size - previousSize < PAGE_SIZE) {
-    const next = nextIdleEntry(list, idle, idleGroups, selected, skippedGroups);
-    if (next === void 0) break;
-    if (next.kind === "session") {
-      selected.add(next.id);
-    } else {
-      const before = pageRows(list).length;
-      loadMore(next.button);
-      if (pageRows(list).length <= before) skippedGroups.add(next.group);
-    }
-  }
-  return [...selected];
+    const groupRows = `:scope > [data-row-key^="${SESSION}"], :scope > :not([role="group"]) > [data-row-key^="${SESSION}"]`;
+    const countRows = () => parent.querySelectorAll(groupRows).length;
+    const before = countRows();
+    let continuation = 0;
+    const finish = (changed) => {
+      observer.disconnect();
+      clearTimeout(timeout);
+      clearTimeout(continuation);
+      signal.removeEventListener("abort", abort);
+      resolve(changed);
+    };
+    const abort = () => finish(false);
+    const observer = new MutationObserver(() => {
+      if (countRows() <= before) return;
+      observer.disconnect();
+      continuation = window.setTimeout(() => finish(true), 0);
+    });
+    const timeout = window.setTimeout(() => finish(continuation !== 0), 150);
+    signal.addEventListener("abort", abort, { once: true });
+    observer.observe(parent, { childList: true, subtree: true });
+    button.click();
+  });
 }
 
 // src/client/idle-control.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
-var rowSelector = '[data-row-key^="session:"], [data-row-key^="workspace:"], [data-row-key^="overflow:"]';
 var workspaceViewKey = "dsh.workspace.view.v5";
 function isArchivedOnly() {
   try {
@@ -126,28 +137,40 @@ function isArchivedOnly() {
     return false;
   }
 }
-function renderedRows(list) {
-  return [...list.querySelectorAll(rowSelector)].filter(
+function addedRows(list, ids) {
+  const selectors = ids.map((id) => `[data-row-key="session:${CSS.escape(id)}"]`);
+  if (selectors.length === 0) return [];
+  return [...list.querySelectorAll(selectors.join(", "))].filter(
     (row) => !row.closest('[aria-hidden="true"]') && row.getClientRects().length > 0
   );
 }
-function IdleControl({ listSelector, scrollportSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, emptyLabel, hasArchives }) {
+function IdleControl({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, loadingLabel, emptyLabel, hasArchives }) {
   const [mount, setMount] = (0, import_react.useState)(null);
   const [archivedOnly, setArchivedOnly] = (0, import_react.useState)(false);
   const [hasMore, setHasMore] = (0, import_react.useState)(false);
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const request = (0, import_react.useRef)(null);
+  const latestPageData = (0, import_react.useRef)({ idle, idleGroups });
   const reveal = (0, import_react.useRef)(null);
   const button = (0, import_react.useRef)(null);
+  const activationKeyHeld = (0, import_react.useRef)(false);
   const list = mount?.list ?? null;
   const watchArchiveFilter = hasArchives && idle.size > 0;
   const canCollapse = shown !== null && !hasMore;
   (0, import_react.useLayoutEffect)(() => {
-    if (list === null) return;
-    const sync = () => setHasMore(hasMoreIdle(list, idle, idleGroups, shown ?? []));
+    latestPageData.current = { idle, idleGroups };
+  }, [idle, idleGroups]);
+  (0, import_react.useLayoutEffect)(() => () => request.current?.abort(), [list, archivedOnly]);
+  (0, import_react.useEffect)(() => {
+    if (list === null || busy || shown === null) return;
+    const sync = () => {
+      if (request.current === null) setHasMore(scanIdlePage(list, idle, idleGroups, shown, 0).hasMore);
+    };
     sync();
     const observer = new MutationObserver(sync);
     observer.observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-expanded", "aria-hidden"] });
     return () => observer.disconnect();
-  }, [list, idle, idleGroups, shown]);
+  }, [list, idle, idleGroups, shown, busy]);
   (0, import_react.useEffect)(() => {
     if (!watchArchiveFilter) return;
     const sync = () => setArchivedOnly(isArchivedOnly());
@@ -169,39 +192,96 @@ function IdleControl({ listSelector, scrollportSelector, idle, idleGroups, shown
       setMount(next === null ? null : { list: next, container });
     };
     syncMount();
-    const observer = new MutationObserver(syncMount);
-    observer.observe(scrollport, { childList: true, subtree: true });
+    const observer = new MutationObserver(() => {
+      syncMount();
+      if (request.current !== null && !current?.matches(browsingSelector)) request.current.abort();
+    });
+    observer.observe(scrollport, { childList: true, subtree: true, attributes: true, attributeFilter: ["tabindex"] });
     return () => {
       observer.disconnect();
       container.remove();
     };
-  }, [listSelector, scrollportSelector]);
-  (0, import_react.useLayoutEffect)(() => {
-    const before = reveal.current;
-    reveal.current = null;
-    if (shown === null || list === null || before === null) return;
-    const addedRows = renderedRows(list).filter((row) => !before.rows.has(row));
-    const addedSessions = addedRows.filter((row) => row.dataset.rowKey?.startsWith("session:"));
-    const added = addedSessions.length > 0 ? addedSessions : addedRows;
-    const first = added[0];
-    if (first === void 0) return;
-    const bounds = list.getBoundingClientRect();
-    const outer = list.closest(scrollportSelector)?.getBoundingClientRect();
-    const top = Math.max(bounds.top, outer?.top ?? 0, 0);
-    const bottom = Math.min(bounds.bottom, outer?.bottom ?? window.innerHeight, window.innerHeight);
-    const isVisible = (row) => {
-      const rect = row.getBoundingClientRect();
-      return rect.bottom > top && rect.top < bottom;
-    };
-    const visibleRows = added.filter(isVisible);
-    const trigger = button.current;
-    if (visibleRows.length > 0 && (!before.keyboard || trigger !== null && isVisible(trigger))) return;
-    const focusTarget = before.keyboard ? visibleRows.find((row) => row.tabIndex >= 0) ?? added.find((row) => row.tabIndex >= 0) : void 0;
-    const target = focusTarget ?? visibleRows[0] ?? first;
-    if (!isVisible(target)) target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
-    focusTarget?.focus({ preventScroll: true });
-  }, [shown, list, scrollportSelector]);
+  }, [listSelector, scrollportSelector, browsingSelector]);
+  (0, import_react.useEffect)(() => {
+    if (shown === null || list === null || busy || reveal.current === null) return;
+    let frame = requestAnimationFrame(function positionPage() {
+      const page = reveal.current;
+      if (page?.keyboard && activationKeyHeld.current) {
+        frame = requestAnimationFrame(positionPage);
+        return;
+      }
+      reveal.current = null;
+      const trigger = button.current;
+      if (page === null || trigger === null || trigger.getClientRects().length === 0) return;
+      const keepFocus = page.keyboard && document.activeElement === trigger;
+      if (page.keyboard && !keepFocus) return;
+      const added = addedRows(list, page.ids);
+      const first = added[0];
+      if (first === void 0) return;
+      const bounds = list.getBoundingClientRect();
+      const outer = list.closest(scrollportSelector)?.getBoundingClientRect();
+      const top = Math.max(bounds.top, outer?.top ?? 0, 0);
+      const bottom = Math.min(bounds.bottom, outer?.bottom ?? window.innerHeight, window.innerHeight);
+      const isVisible = (row) => {
+        const rect = row.getBoundingClientRect();
+        return rect.bottom > top && rect.top < bottom;
+      };
+      const visible = added.find(isVisible);
+      if (visible !== void 0 && (!keepFocus || isVisible(trigger))) return;
+      const target = visible ?? first;
+      if (visible === void 0) target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+      if (keepFocus) target.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [shown, list, scrollportSelector, busy]);
   if (mount === null || list === null) return null;
+  const showNextPage = async (keyboard) => {
+    if (request.current !== null) return;
+    if (canCollapse) {
+      reveal.current = null;
+      onChange(null);
+      return;
+    }
+    const tree = list.querySelector('[role="tree"]');
+    const browsing = () => list.isConnected && list.matches(browsingSelector) && list.querySelector('[role="tree"]') === tree;
+    if (!browsing()) return;
+    const ids = [];
+    let committed = shown;
+    let page = scanIdlePage(list, idle, idleGroups, committed ?? [], IDLE_PAGE_SIZE);
+    const applyPage = () => {
+      const changed = page.added.length > 0 || page.shown.length !== (committed?.length ?? 0);
+      if (changed || committed === null && page.boundary === void 0) {
+        committed = page.shown;
+        onChange(page.shown);
+      }
+      ids.push(...page.added);
+      setHasMore(page.hasMore);
+    };
+    if (page.boundary === void 0) {
+      reveal.current = { ids, keyboard };
+      applyPage();
+      return;
+    }
+    const controller = new AbortController();
+    request.current = controller;
+    reveal.current = null;
+    setBusy(true);
+    applyPage();
+    try {
+      while (page.boundary !== void 0) {
+        const advanced = await loadNativePage(page.boundary, controller.signal);
+        if (controller.signal.aborted || !browsing()) return;
+        if (!advanced) break;
+        const current = latestPageData.current;
+        page = scanIdlePage(list, current.idle, current.idleGroups, page.shown, IDLE_PAGE_SIZE - ids.length);
+        applyPage();
+      }
+      reveal.current = { ids, keyboard };
+    } finally {
+      request.current = null;
+      setBusy(false);
+    }
+  };
   return (0, import_react_dom.createPortal)(/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "data-dsh-workspace-attention-empty": "", children: emptyLabel }),
     idle.size > 0 && !(watchArchiveFilter && archivedOnly) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -211,16 +291,22 @@ function IdleControl({ listSelector, scrollportSelector, idle, idleGroups, shown
         type: "button",
         "data-dsh-workspace-idle-toggle": "",
         "aria-expanded": shown !== null,
+        "aria-disabled": busy || void 0,
         onClick: (event) => {
-          const selected = shown ?? [];
-          if (shown !== null && !hasMoreIdle(list, idle, idleGroups, selected)) {
-            onChange(null);
-            return;
-          }
-          reveal.current = { rows: new Set(renderedRows(list)), keyboard: event.detail === 0 };
-          onChange(nextIdlePage(list, idle, idleGroups, selected, (overflow) => (0, import_react_dom.flushSync)(() => overflow.click())));
+          void showNextPage(event.detail === 0);
         },
-        children: canCollapse ? collapseLabel : moreLabel
+        onKeyDown: (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          activationKeyHeld.current = true;
+          if (event.repeat) event.preventDefault();
+        },
+        onKeyUp: (event) => {
+          if (event.key === "Enter" || event.key === " ") activationKeyHeld.current = false;
+        },
+        onBlur: () => {
+          activationKeyHeld.current = false;
+        },
+        children: busy ? loadingLabel : canCollapse ? collapseLabel : moreLabel
       }
     )
   ] }), mount.container);
@@ -493,12 +579,14 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }) {
       {
         listSelector: LIST,
         scrollportSelector: SCROLLPORT,
+        browsingSelector: `${BROWSING} ${LIST}`,
         idle: idleIds,
         idleGroups,
         shown,
         onChange: setShown,
         moreLabel: t("expandIdle"),
         collapseLabel: t("collapseIdle"),
+        loadingLabel: t("loading"),
         emptyLabel: t(list.phase === "pending" ? "loading" : "empty"),
         hasArchives: workspace.archivedSessionIds.length > 0
       }

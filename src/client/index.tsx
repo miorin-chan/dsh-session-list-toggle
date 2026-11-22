@@ -244,12 +244,14 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
     <IdleControl
       listSelector={LIST}
       scrollportSelector={SCROLLPORT}
+      browsingSelector={`${BROWSING} ${LIST}`}
       idle={idleIds}
       idleGroups={idleGroups}
       shown={shown}
       onChange={setShown}
       moreLabel={t('expandIdle')}
       collapseLabel={t('collapseIdle')}
+      loadingLabel={t('loading')}
       emptyLabel={t(list.phase === 'pending' ? 'loading' : 'empty')}
       hasArchives={workspace.archivedSessionIds.length > 0}
     />
