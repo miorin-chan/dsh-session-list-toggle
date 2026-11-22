@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Drei Ansichten für die Seitenleistenliste",
-    "description": "Klicke in der Seitenleiste auf den Pfeil neben Arbeitsbereiche oder Sitzungen, um zwischen Alle → Eingeklappt → Handlungsbedarf zu wechseln. Die letzte Ansicht zeigt angeheftete und laufende Sitzungen (einschließlich laufender Subagenten), Sitzungen mit ausstehender Genehmigung, Planprüfung oder Antwort sowie abgeschlossene, ungelesene Sitzungen."
+    "description": "Klicke in der Seitenleiste auf den Pfeil neben Arbeitsbereiche oder Sitzungen, um zwischen Alle → Eingeklappt → Handlungsbedarf zu wechseln. Die letzte Ansicht zeigt angeheftete und laufende Sitzungen (einschließlich laufender Subagenten), Sitzungen mit ausstehender Genehmigung, Planprüfung oder Antwort sowie abgeschlossene, ungelesene Sitzungen. Wenn Sitzungsentwurf aktiviert ist, bleiben auch Unterhaltungen mit ungesendeten Entwürfen sichtbar."
   }
 }

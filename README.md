@@ -5,6 +5,7 @@
 Use the chevron beside Workspaces or Sessions to cycle through **All → Collapsed → Needs attention**.
 **Needs attention** keeps pinned sessions and sessions with pending approvals,
 plan reviews or questions, ongoing work (including subagents), or unread completions.
+It also keeps sessions with unsent drafts when **Session draft** is enabled.
 In workspace views it keeps matching workspace headings and their tree ancestors.
 Use **Show more idle conversations** at the bottom of the list to reveal up to five at a time in list order.
 Once the open groups have no more idle conversations to show, the button changes to **Show fewer idle conversations**.

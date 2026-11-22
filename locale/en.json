@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Three sidebar list modes",
-    "description": "Click the chevron beside Workspaces or Sessions to cycle through All → Collapsed → Needs attention. Needs attention shows pinned sessions and sessions with ongoing work (including subagents), pending approvals, plan reviews or questions, or unread completions."
+    "description": "Click the chevron beside Workspaces or Sessions to cycle through All → Collapsed → Needs attention. Needs attention shows pinned sessions and sessions with ongoing work (including subagents), pending approvals, plan reviews or questions, or unread completions. When Session draft is enabled, it also keeps conversations with unsent drafts."
   }
 }

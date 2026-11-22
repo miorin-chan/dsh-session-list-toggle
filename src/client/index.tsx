@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -8,6 +8,7 @@ import type { SessionStatusSnapshot, UseSessions, UseSessionStatus } from '@deep
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { sessionVisibility } from './attention.js'
+import { connectDrafts } from './drafts.js'
 import { IdleControl } from './idle-control.js'
 
 const NS = 'dsh-workspace-list-toggle'
@@ -126,15 +127,17 @@ interface AttentionProps {
   useSessionStatus: UseSessionStatus
   useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>
   t: TranslateNS<typeof NS>
+  draftSource: ReturnType<typeof connectDrafts>
 }
 
-function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: AttentionProps) {
+function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t, draftSource }: AttentionProps) {
   const [shown, setShown] = useState<string[] | null>(null)
   const showIdle = shown !== null
   const list = useSessions((value: SessionListState) => value)
   const statuses = useSessionStatus((value: SessionStatusSnapshot) => value)
   const workspace: WorkspaceSnapshot = useWorkspaces((value: WorkspaceSnapshot) => value)
-  const { attention, idle } = sessionVisibility(list, statuses, workspace)
+  const drafts = useSyncExternalStore(draftSource.subscribe, draftSource.getSnapshot)
+  const { attention, idle } = sessionVisibility(list, statuses, workspace, drafts)
   const idleIds = new Set(idle)
   const selected = new Set(shown)
   const ids = [...attention, ...idle.filter(id => selected.has(id))]
@@ -263,6 +266,7 @@ export const inject = ['slots', 'locale']
 export function apply(ctx: Context): void {
   // Keep the preference for this page even if the sidebar footer remounts.
   let listMode: Mode = 'all'
+  const draftSource = connectDrafts(ctx)
   ctx.effect(() => ctx.locale.register(NS, LABELS))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: NS, locale: NS,
@@ -289,7 +293,7 @@ export function apply(ctx: Context): void {
           <path d="m6.5 5 3 3-3 3" />
         </svg>
       </button>
-      {mode === 'attention' && <AttentionFilter {...{ t, useSessions, useSessionStatus, useWorkspaces }} />}
+      {mode === 'attention' && <AttentionFilter {...{ t, useSessions, useSessionStatus, useWorkspaces, draftSource }} />}
     </>
   }))
 }

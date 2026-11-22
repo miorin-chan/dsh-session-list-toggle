@@ -15,6 +15,7 @@ test('registers the footer action and releases it on unload', () => {
   const cleanups = []
   const active = new Map()
   const ctx = {
+    inject(services) { assert.deepEqual(services, ['sessionDraftIndicators']) },
     effect(setup) { cleanups.push(setup()) },
     locale: {
       register(namespace, labels) {

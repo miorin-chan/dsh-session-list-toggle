@@ -41,6 +41,26 @@ test('finds attention rows across the catalog without consulting workspace expan
   assert.deepEqual(sessionVisibility(list, statuses, workspace).idle, ['parent-in-folded-workspace', 'idle'])
 })
 
+test('keeps sessions with drafts and drops the draft criterion when the source is absent', () => {
+  const list = catalog([
+    session('draft'),
+    session('new-draft', { blank: true }),
+    session('archived'),
+    session('subagent', { origin: 'subagent' }),
+    session('idle'),
+  ])
+  const statuses = new Map()
+  const workspace = { archivedSessionIds: ['archived'], pinnedSessionIds: [] }
+  const drafts = new Set(['draft', 'new-draft', 'archived', 'subagent', 'missing'])
+
+  assert.deepEqual(sessionVisibility(list, statuses, workspace, drafts), {
+    attention: ['draft', 'new-draft'], idle: ['idle'],
+  })
+  assert.deepEqual(sessionVisibility(list, statuses, workspace), {
+    attention: [], idle: ['draft', 'idle'],
+  })
+})
+
 test('keeps idle pinned sessions and reapplies attention rules when they are unpinned', () => {
   const list = catalog([
     session('idle-pinned'),

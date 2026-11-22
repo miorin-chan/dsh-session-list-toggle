@@ -37,7 +37,7 @@ module.exports = __toCommonJS(index_exports);
 var import_react2 = require("react");
 
 // src/client/attention.ts
-function sessionVisibility(list, statuses, { archivedSessionIds, pinnedSessionIds }) {
+function sessionVisibility(list, statuses, { archivedSessionIds, pinnedSessionIds }, drafts) {
   const archived = new Set(archivedSessionIds);
   const pinned = new Set(pinnedSessionIds);
   const attention = [];
@@ -47,13 +47,50 @@ function sessionVisibility(list, statuses, { archivedSessionIds, pinnedSessionId
     if (session === void 0 || session.origin === "subagent" || archived.has(id)) continue;
     const status = statuses.get(id);
     const pending = status?.pendingInteraction?.kind;
-    const needsAttention = pinned.has(id) || pending === "approval" || pending === "plan-review" || pending === "question" || (status?.running ?? session.running) || status?.completionUnread || list.projectionsBySession[id]?.values.subagentCatalog?.some(
+    const needsAttention = pinned.has(id) || drafts?.has(id) || pending === "approval" || pending === "plan-review" || pending === "question" || (status?.running ?? session.running) || status?.completionUnread || list.projectionsBySession[id]?.values.subagentCatalog?.some(
       (child) => statuses.get(child.id)?.running ?? list.byId[child.id]?.running ?? false
     );
     if (needsAttention) attention.push(id);
     else if (!session.blank) idle.push(id);
   }
   return { attention, idle };
+}
+
+// src/client/drafts.ts
+var service = "sessionDraftIndicators";
+var empty = /* @__PURE__ */ new Set();
+function isDraftSource(value) {
+  return typeof value === "object" && value !== null && "getSnapshot" in value && typeof value.getSnapshot === "function" && "subscribe" in value && typeof value.subscribe === "function";
+}
+function connectDrafts(ctx) {
+  let source;
+  const listeners = /* @__PURE__ */ new Set();
+  const notify = () => {
+    for (const listener of listeners) listener();
+  };
+  ctx.inject([service], (scope) => {
+    const candidate = scope.get(service);
+    if (!isDraftSource(candidate)) return;
+    scope.effect(() => {
+      source = candidate;
+      const unsubscribe = candidate.subscribe(notify);
+      notify();
+      return () => {
+        unsubscribe();
+        source = void 0;
+        notify();
+      };
+    });
+  });
+  return {
+    getSnapshot: () => source?.getSnapshot() ?? empty,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    }
+  };
 }
 
 // src/client/idle-control.tsx
@@ -467,13 +504,14 @@ var STYLE = `
 `;
 var nextMode = { all: "collapsed", collapsed: "attention", attention: "all" };
 var nextLabel = { all: "hide", collapsed: "attention", attention: "show" };
-function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }) {
+function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t, draftSource }) {
   const [shown, setShown] = (0, import_react2.useState)(null);
   const showIdle = shown !== null;
   const list = useSessions((value) => value);
   const statuses = useSessionStatus((value) => value);
   const workspace = useWorkspaces((value) => value);
-  const { attention, idle } = sessionVisibility(list, statuses, workspace);
+  const drafts = (0, import_react2.useSyncExternalStore)(draftSource.subscribe, draftSource.getSnapshot);
+  const { attention, idle } = sessionVisibility(list, statuses, workspace, drafts);
   const idleIds = new Set(idle);
   const selected = new Set(shown);
   const ids = [...attention, ...idle.filter((id) => selected.has(id))];
@@ -596,6 +634,7 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }) {
 var inject = ["slots", "locale"];
 function apply(ctx) {
   let listMode = "all";
+  const draftSource = connectDrafts(ctx);
   ctx.effect(() => ctx.locale.register(NS, LABELS));
   ctx.slots.inject("sidebar.footer.action", () => ctx.slots.register({
     name: "sidebar.footer.action",
@@ -637,7 +676,7 @@ function apply(ctx) {
           )
         }
       ),
-      mode === "attention" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AttentionFilter, { ...{ t, useSessions, useSessionStatus, useWorkspaces } })
+      mode === "attention" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AttentionFilter, { ...{ t, useSessions, useSessionStatus, useWorkspaces, draftSource } })
     ] });
   }));
 }
