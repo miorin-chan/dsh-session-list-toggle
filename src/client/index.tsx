@@ -18,14 +18,14 @@ const EMPTY_ICON = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://
 </svg>`)}`
 
 const LABELS = {
-  en: { hide: 'Collapse session list', attention: 'Show sessions needing attention', show: 'Show full session list', empty: 'No sessions need attention', loading: 'Loading sessions…' },
-  zh: { hide: '收起会话列表', attention: '仅显示需关注的会话', show: '显示全部会话', empty: '没有需要关注的会话', loading: '正在加载会话…' },
-  ja: { hide: 'セッション一覧を折りたたむ', attention: '要確認のセッションを表示', show: 'すべてのセッションを表示', empty: '要確認のセッションはありません', loading: '読み込み中…' },
-  de: { hide: 'Sitzungsliste einklappen', attention: 'Sitzungen mit Handlungsbedarf anzeigen', show: 'Alle Sitzungen anzeigen', empty: 'Keine Sitzung erfordert Aufmerksamkeit', loading: 'Sitzungen werden geladen…' },
-  es: { hide: 'Contraer la lista de sesiones', attention: 'Mostrar las sesiones que requieren atención', show: 'Mostrar todas las sesiones', empty: 'Ninguna sesión requiere atención', loading: 'Cargando sesiones…' },
-  fr: { hide: 'Replier la liste des sessions', attention: 'Afficher les sessions à suivre', show: 'Afficher toutes les sessions', empty: 'Aucune session ne requiert votre attention', loading: 'Chargement des sessions…' },
-  pt: { hide: 'Recolher a lista de sessões', attention: 'Mostrar sessões que exigem atenção', show: 'Mostrar todas as sessões', empty: 'Nenhuma sessão requer atenção', loading: 'Carregando sessões…' },
-  ru: { hide: 'Свернуть список сеансов', attention: 'Показать сеансы, требующие внимания', show: 'Показать все сеансы', empty: 'Нет сеансов, требующих внимания', loading: 'Загрузка сеансов…' },
+  en: { hide: 'Collapse session list', attention: 'Show pinned sessions and sessions needing attention', show: 'Show full session list', empty: 'No pinned sessions or sessions needing attention', loading: 'Loading sessions…' },
+  zh: { hide: '收起会话列表', attention: '显示置顶和需关注的会话', show: '显示全部会话', empty: '没有置顶或需关注的会话', loading: '正在加载会话…' },
+  ja: { hide: 'セッション一覧を折りたたむ', attention: 'ピン留め済みと要確認のセッションを表示', show: 'すべてのセッションを表示', empty: 'ピン留め済みや要確認のセッションはありません', loading: '読み込み中…' },
+  de: { hide: 'Sitzungsliste einklappen', attention: 'Angeheftete Sitzungen und Sitzungen mit Handlungsbedarf anzeigen', show: 'Alle Sitzungen anzeigen', empty: 'Keine angehefteten Sitzungen oder Sitzungen mit Handlungsbedarf', loading: 'Sitzungen werden geladen…' },
+  es: { hide: 'Contraer la lista de sesiones', attention: 'Mostrar las sesiones fijadas y las que requieren atención', show: 'Mostrar todas las sesiones', empty: 'No hay sesiones fijadas ni sesiones que requieran atención', loading: 'Cargando sesiones…' },
+  fr: { hide: 'Replier la liste des sessions', attention: 'Afficher les sessions épinglées et celles à suivre', show: 'Afficher toutes les sessions', empty: 'Aucune session épinglée ou à suivre', loading: 'Chargement des sessions…' },
+  pt: { hide: 'Recolher a lista de sessões', attention: 'Mostrar sessões fixadas e sessões que exigem atenção', show: 'Mostrar todas as sessões', empty: 'Não há sessões fixadas nem sessões que exijam atenção', loading: 'Carregando sessões…' },
+  ru: { hide: 'Свернуть список сеансов', attention: 'Показать закреплённые сеансы и сеансы, требующие внимания', show: 'Показать все сеансы', empty: 'Нет закреплённых сеансов или сеансов, требующих внимания', loading: 'Загрузка сеансов…' },
 } as const
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -120,7 +120,7 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
   const list = useSessions((value: SessionListState) => value)
   const statuses = useSessionStatus((value: SessionStatusSnapshot) => value)
   const workspace: WorkspaceSnapshot = useWorkspaces((value: WorkspaceSnapshot) => value)
-  const ids = attentionSessionIds(list, statuses, workspace.archivedSessionIds)
+  const ids = attentionSessionIds(list, statuses, workspace)
   const pending = new Set(ids)
   const activeSessionsByGroup = new Map<string, typeof ids>()
   const activeWorkspaces = workspace.items.filter(item => {

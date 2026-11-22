@@ -2,10 +2,9 @@
 
 [简体中文](README.zh.md)
 
-Use the chevron beside Workspaces or Sessions to cycle from the full list to collapsed,
-then to sessions that need attention.
-Attention keeps the native rows for pending approvals, plan reviews or questions,
-ongoing work (including subagents), and unread completions.
+Use the chevron beside Workspaces or Sessions to cycle from the full list to collapsed, then to the filtered list.
+The filtered list keeps pinned sessions and sessions with pending approvals,
+plan reviews or questions, ongoing work (including subagents), or unread completions.
 In workspace views it keeps matching workspace headings and their tree ancestors.
 Expand a folded group to see its rows. The native per-group row limit still applies.
 Search temporarily shows native results and restores the previous mode when closed.

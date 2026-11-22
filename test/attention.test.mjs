@@ -32,9 +32,27 @@ test('finds attention rows across the catalog without consulting workspace expan
     ['approval', status({ running: true, completionUnread: true, pendingInteraction: { kind: 'approval' } })],
   ])
 
-  assert.deepEqual(attentionSessionIds(list, statuses, ['archived']), [
+  const workspace = { archivedSessionIds: ['archived'], pinnedSessionIds: [] }
+  assert.deepEqual(attentionSessionIds(list, statuses, workspace), [
     'unread', 'parent-in-folded-workspace', 'running', 'question', 'review', 'approval',
   ])
   statuses.set('child', status({ running: false }))
-  assert.equal(attentionSessionIds(list, statuses, ['archived']).includes('parent-in-folded-workspace'), false)
+  assert.equal(attentionSessionIds(list, statuses, workspace).includes('parent-in-folded-workspace'), false)
+})
+
+test('keeps idle pinned sessions and reapplies attention rules when they are unpinned', () => {
+  const list = catalog([
+    session('idle-pinned'),
+    session('running-pinned', { running: true }),
+    session('archived-pinned'),
+    session('unpinned'),
+  ])
+  const statuses = new Map()
+  const workspace = {
+    archivedSessionIds: ['archived-pinned'],
+    pinnedSessionIds: ['idle-pinned', 'running-pinned', 'archived-pinned', 'missing'],
+  }
+
+  assert.deepEqual(attentionSessionIds(list, statuses, workspace), ['idle-pinned', 'running-pinned'])
+  assert.deepEqual(attentionSessionIds(list, statuses, { ...workspace, pinnedSessionIds: [] }), ['running-pinned'])
 })
