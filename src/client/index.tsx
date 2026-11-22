@@ -7,7 +7,8 @@ import type { SnapshotSelectorHook, TranslateNS } from '@deepseek-ai/dsh-client-
 import type { SessionStatusSnapshot, UseSessions, UseSessionStatus } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import { attentionSessionIds } from './attention.js'
+import { sessionVisibility } from './attention.js'
+import { IdleControl } from './idle-control.js'
 
 const NS = 'dsh-workspace-list-toggle'
 // DSH IconQueueOutlineRegular artwork. See THIRD-PARTY-NOTICES.txt.
@@ -18,14 +19,22 @@ const EMPTY_ICON = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://
 </svg>`)}`
 
 const LABELS = {
-  en: { hide: 'Collapse session list', attention: 'Show pinned sessions and sessions needing attention', show: 'Show full session list', empty: 'No pinned sessions or sessions needing attention', loading: 'Loading sessions…' },
-  zh: { hide: '收起会话列表', attention: '显示置顶和需关注的会话', show: '显示全部会话', empty: '没有置顶或需关注的会话', loading: '正在加载会话…' },
-  ja: { hide: 'セッション一覧を折りたたむ', attention: 'ピン留め済みと要確認のセッションを表示', show: 'すべてのセッションを表示', empty: 'ピン留め済みや要確認のセッションはありません', loading: '読み込み中…' },
-  de: { hide: 'Sitzungsliste einklappen', attention: 'Angeheftete Sitzungen und Sitzungen mit Handlungsbedarf anzeigen', show: 'Alle Sitzungen anzeigen', empty: 'Keine angehefteten Sitzungen oder Sitzungen mit Handlungsbedarf', loading: 'Sitzungen werden geladen…' },
-  es: { hide: 'Contraer la lista de sesiones', attention: 'Mostrar las sesiones fijadas y las que requieren atención', show: 'Mostrar todas las sesiones', empty: 'No hay sesiones fijadas ni sesiones que requieran atención', loading: 'Cargando sesiones…' },
-  fr: { hide: 'Replier la liste des sessions', attention: 'Afficher les sessions épinglées et celles à suivre', show: 'Afficher toutes les sessions', empty: 'Aucune session épinglée ou à suivre', loading: 'Chargement des sessions…' },
-  pt: { hide: 'Recolher a lista de sessões', attention: 'Mostrar sessões fixadas e sessões que exigem atenção', show: 'Mostrar todas as sessões', empty: 'Não há sessões fixadas nem sessões que exijam atenção', loading: 'Carregando sessões…' },
-  ru: { hide: 'Свернуть список сеансов', attention: 'Показать закреплённые сеансы и сеансы, требующие внимания', show: 'Показать все сеансы', empty: 'Нет закреплённых сеансов или сеансов, требующих внимания', loading: 'Загрузка сеансов…' },
+  en: { hide: 'Collapse session list', attention: 'Show pinned sessions and sessions needing attention', show: 'Show full session list', empty: 'No pinned sessions or sessions needing attention', loading: 'Loading sessions…',
+    expandIdle: 'Show idle conversations', collapseIdle: 'Hide idle conversations' },
+  zh: { hide: '收起会话列表', attention: '显示置顶和需关注的会话', show: '显示全部会话', empty: '没有置顶或需关注的会话', loading: '正在加载会话…',
+    expandIdle: '展开空闲对话', collapseIdle: '收起空闲对话' },
+  ja: { hide: 'セッション一覧を折りたたむ', attention: 'ピン留め済みと要確認のセッションを表示', show: 'すべてのセッションを表示', empty: 'ピン留め済みや要確認のセッションはありません', loading: '読み込み中…',
+    expandIdle: '待機中の会話を表示', collapseIdle: '待機中の会話を非表示' },
+  de: { hide: 'Sitzungsliste einklappen', attention: 'Angeheftete Sitzungen und Sitzungen mit Handlungsbedarf anzeigen', show: 'Alle Sitzungen anzeigen', empty: 'Keine angehefteten Sitzungen oder Sitzungen mit Handlungsbedarf', loading: 'Sitzungen werden geladen…',
+    expandIdle: 'Inaktive Unterhaltungen anzeigen', collapseIdle: 'Inaktive Unterhaltungen ausblenden' },
+  es: { hide: 'Contraer la lista de sesiones', attention: 'Mostrar las sesiones fijadas y las que requieren atención', show: 'Mostrar todas las sesiones', empty: 'No hay sesiones fijadas ni sesiones que requieran atención', loading: 'Cargando sesiones…',
+    expandIdle: 'Mostrar conversaciones inactivas', collapseIdle: 'Ocultar conversaciones inactivas' },
+  fr: { hide: 'Replier la liste des sessions', attention: 'Afficher les sessions épinglées et celles à suivre', show: 'Afficher toutes les sessions', empty: 'Aucune session épinglée ou à suivre', loading: 'Chargement des sessions…',
+    expandIdle: 'Afficher les conversations inactives', collapseIdle: 'Masquer les conversations inactives' },
+  pt: { hide: 'Recolher a lista de sessões', attention: 'Mostrar sessões fixadas e sessões que exigem atenção', show: 'Mostrar todas as sessões', empty: 'Não há sessões fixadas nem sessões que exijam atenção', loading: 'Carregando sessões…',
+    expandIdle: 'Mostrar conversas inativas', collapseIdle: 'Ocultar conversas inativas' },
+  ru: { hide: 'Свернуть список сеансов', attention: 'Показать закреплённые сеансы и сеансы, требующие внимания', show: 'Показать все сеансы', empty: 'Нет закреплённых сеансов или сеансов, требующих внимания', loading: 'Загрузка сеансов…',
+    expandIdle: 'Показать неактивные диалоги', collapseIdle: 'Скрыть неактивные диалоги' },
 } as const
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -42,6 +51,8 @@ const TITLE = `${HEADER} > span:first-child`
 const BUTTON = '[data-dsh-workspace-list-toggle]'
 const LIST = `${SCROLLPORT} [data-sidebar-list-area]`
 const SESSION_ROW = '[data-row-key^="session:"]'
+const IDLE_BUTTON = '[data-dsh-workspace-idle-toggle]'
+const ATTENTION_EMPTY = '[data-dsh-workspace-attention-empty]'
 const BROWSING = `body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"]))`
 const STYLE = `
   ${BUTTON} { display: none; }
@@ -117,19 +128,29 @@ interface AttentionProps {
 }
 
 function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: AttentionProps) {
+  const [showIdle, setShowIdle] = useState(false)
   const list = useSessions((value: SessionListState) => value)
   const statuses = useSessionStatus((value: SessionStatusSnapshot) => value)
   const workspace: WorkspaceSnapshot = useWorkspaces((value: WorkspaceSnapshot) => value)
-  const ids = attentionSessionIds(list, statuses, workspace)
+  const { attention, idle } = sessionVisibility(list, statuses, workspace)
+  const idleIds = new Set(idle)
+  const ids = showIdle ? [...attention, ...idle] : attention
   const pending = new Set(ids)
+  const looseIdle = new Set(idle)
   const activeSessionsByGroup = new Map<string, typeof ids>()
+  const idleWorkspaces = new Set<string>()
   const activeWorkspaces = workspace.items.filter(item => {
+    for (const id of item.sessionIds) {
+      if (idleIds.has(id)) idleWorkspaces.add(item.workspaceId)
+      looseIdle.delete(id)
+    }
     const active = item.sessionIds.filter(id => pending.delete(id))
     if (active.length === 0) return false
     activeSessionsByGroup.set(item.workspaceId, active)
     return true
   })
   if (pending.size > 0) activeSessionsByGroup.set('', [...pending]) // Native Ungrouped key.
+  if (looseIdle.size > 0) idleWorkspaces.add('')
   const row = (key: string) => `[data-row-key="${CSS.escape(key)}"]`
   const groupRows = [...activeSessionsByGroup.keys()].map(key => row(`workspace:${key}`))
   const sessionRows = ids.map(id => row(`session:${id}`))
@@ -137,11 +158,12 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
   const scope = `${BROWSING}:has(${BUTTON}[data-mode="attention"]) ${LIST}`
   // Native child headings disappear under folded ancestors. A filesystem ancestor
   // is only a fallback when the matching child heading is absent from the list.
+  const ancestorSelectors = (path: string) => workspace.items.filter(candidate => candidate.path !== path && (
+    path.startsWith(candidate.path.replace(/\/+$/, '') + '/') ||
+    path.startsWith(candidate.path.replace(/\\+$/, '') + '\\')
+  )).map(candidate => row(`workspace:${candidate.workspaceId}`))
   const hiddenDescendants = activeWorkspaces.flatMap(item => {
-    const ancestors = workspace.items.filter(candidate => candidate.path !== item.path && (
-      item.path.startsWith(candidate.path.replace(/\/+$/, '') + '/') ||
-      item.path.startsWith(candidate.path.replace(/\\+$/, '') + '\\')
-    )).map(candidate => row(`workspace:${candidate.workspaceId}`))
+    const ancestors = ancestorSelectors(item.path)
     if (ancestors.length === 0) return []
     return [{ anchor: row(`workspace:${item.workspaceId}`), ancestors }]
   })
@@ -154,36 +176,77 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }: At
   }).join('')
   const activeOverflow = [...activeSessionsByGroup.keys()].map(key => row(`overflow:${key}`)).join(', ') || ':not(*)'
   const group = 'div:has(> [data-row-key^="workspace:"], > span > [data-row-key^="workspace:"])'
-  return <style>{`
-    ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(', ') || ':not(*)'})),
-    ${scope} ${group}:not(:has(${keep})),
-    ${scope} [data-row-key^="overflow:"]:not(:is(${activeOverflow})),
-    ${scope} [data-row-key="empty"] { display: none; }
-    ${overflowRules}
-    ${hiddenDescendants.map(({ anchor, ancestors }) => `
-      ${scope}:not(:has(${anchor})) ${group}:has(:is(${ancestors.join(', ')})) {
+  const idleRows = [
+    ...idle.map(id => row(`session:${id}`)),
+    ...[...idleWorkspaces].map(id => row(`workspace:${id}`)),
+    ...workspace.items.filter(item => idleWorkspaces.has(item.workspaceId)).flatMap(item => ancestorSelectors(item.path)),
+  ].join(', ')
+  return <>
+    <style>{`
+      ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(', ') || ':not(*)'})),
+      ${scope} ${group}:not(:has(${keep})),
+      ${scope} [data-row-key="empty"] { display: none; }
+      ${showIdle ? '' : `
+        ${scope} [data-row-key^="overflow:"]:not(:is(${activeOverflow})) { display: none; }
+        ${overflowRules}
+      `}
+      ${hiddenDescendants.map(({ anchor, ancestors }) => `
+        ${scope}:not(:has(${anchor})) ${group}:has(:is(${ancestors.join(', ')})) {
+          display: block;
+        }
+      `).join('')}
+      [data-dsh-workspace-list-end], ${IDLE_BUTTON}, ${ATTENTION_EMPTY} { display: none; }
+      ${scope} > [data-dsh-workspace-list-end] { display: block; }
+      ${emptyList} ${ATTENTION_EMPTY} {
         display: block;
+        padding-inline: 12px;
+        color: var(--dsw-alias-label-tertiary);
+        font-size: 13px;
+        line-height: 20px;
+        text-align: center;
       }
-    `).join('')}
-    ${emptyList}::before {
-      content: '';
-      display: block;
-      inline-size: 24px;
-      block-size: 24px;
-      margin: 80px auto 12px;
-      background-color: var(--dsw-alias-label-caption);
-      mask: url("${EMPTY_ICON}") center / contain no-repeat;
-    }
-    ${emptyList}::after {
-      content: ${JSON.stringify(t(list.phase === 'pending' ? 'loading' : 'empty'))};
-      display: block;
-      padding-inline: 12px;
-      color: var(--dsw-alias-label-tertiary);
-      font-size: 13px;
-      line-height: 20px;
-      text-align: center;
-    }
-  `}</style>
+      ${ATTENTION_EMPTY}::before {
+        content: '';
+        display: block;
+        inline-size: 24px;
+        block-size: 24px;
+        margin: 64px auto 12px;
+        background-color: var(--dsw-alias-label-caption);
+        mask: url("${EMPTY_ICON}") center / contain no-repeat;
+      }
+      ${idleRows === '' ? '' : `${scope}:has(${idleRows}) ${IDLE_BUTTON} { display: block; }`}
+      /* WorkspaceBrowser.module.css .sessionOverflowButton (DSH ui-workspace 0.2.2-rc.5). */
+      ${IDLE_BUTTON} {
+        inline-size: 100%;
+        block-size: 28px;
+        margin-block: 4px 16px;
+        padding: 0 var(--dsh-sidebar-row-padding, 8px);
+        border: 0;
+        border-radius: var(--dsw-radius-sm);
+        background: transparent;
+        color: var(--dsw-alias-label-tertiary);
+        font-size: 12px;
+        text-align: start;
+        cursor: pointer;
+      }
+      @media (hover: hover) {
+        ${IDLE_BUTTON}:hover { color: var(--dsw-alias-label-secondary); }
+      }
+      ${IDLE_BUTTON}:focus-visible {
+        outline: var(--dsw-focus-ring-width, 1px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+        outline-offset: -2px;
+      }
+    `}</style>
+    <IdleControl
+      listSelector={LIST}
+      scrollportSelector={SCROLLPORT}
+      expanded={showIdle}
+      onChange={setShowIdle}
+      label={idle.length > 0 ? t(showIdle ? 'collapseIdle' : 'expandIdle') : undefined}
+      emptyLabel={t(list.phase === 'pending' ? 'loading' : 'empty')}
+      hasArchives={workspace.archivedSessionIds.length > 0}
+    />
+  </>
 }
 
 export const inject = ['slots', 'locale']

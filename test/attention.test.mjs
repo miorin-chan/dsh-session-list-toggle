@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { attentionSessionIds } from '../src/client/attention.ts'
+import { sessionVisibility } from '../src/client/attention.ts'
 
 const session = (id, fields = {}) => ({ id, updatedAt: 1, running: false, ...fields })
 const status = fields => ({ running: false, completionUnread: false, ...fields })
@@ -33,11 +33,12 @@ test('finds attention rows across the catalog without consulting workspace expan
   ])
 
   const workspace = { archivedSessionIds: ['archived'], pinnedSessionIds: [] }
-  assert.deepEqual(attentionSessionIds(list, statuses, workspace), [
-    'unread', 'parent-in-folded-workspace', 'running', 'question', 'review', 'approval',
-  ])
+  assert.deepEqual(sessionVisibility(list, statuses, workspace), {
+    attention: ['unread', 'parent-in-folded-workspace', 'running', 'question', 'review', 'approval'],
+    idle: ['idle'],
+  })
   statuses.set('child', status({ running: false }))
-  assert.equal(attentionSessionIds(list, statuses, workspace).includes('parent-in-folded-workspace'), false)
+  assert.deepEqual(sessionVisibility(list, statuses, workspace).idle, ['parent-in-folded-workspace', 'idle'])
 })
 
 test('keeps idle pinned sessions and reapplies attention rules when they are unpinned', () => {
@@ -45,6 +46,8 @@ test('keeps idle pinned sessions and reapplies attention rules when they are unp
     session('idle-pinned'),
     session('running-pinned', { running: true }),
     session('archived-pinned'),
+    session('subagent', { origin: 'subagent' }),
+    session('draft', { blank: true }),
     session('unpinned'),
   ])
   const statuses = new Map()
@@ -53,6 +56,10 @@ test('keeps idle pinned sessions and reapplies attention rules when they are unp
     pinnedSessionIds: ['idle-pinned', 'running-pinned', 'archived-pinned', 'missing'],
   }
 
-  assert.deepEqual(attentionSessionIds(list, statuses, workspace), ['idle-pinned', 'running-pinned'])
-  assert.deepEqual(attentionSessionIds(list, statuses, { ...workspace, pinnedSessionIds: [] }), ['running-pinned'])
+  assert.deepEqual(sessionVisibility(list, statuses, workspace), {
+    attention: ['idle-pinned', 'running-pinned'], idle: ['unpinned'],
+  })
+  assert.deepEqual(sessionVisibility(list, statuses, { ...workspace, pinnedSessionIds: [] }), {
+    attention: ['running-pinned'], idle: ['idle-pinned', 'unpinned'],
+  })
 })

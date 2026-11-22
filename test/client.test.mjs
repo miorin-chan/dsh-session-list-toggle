@@ -19,6 +19,10 @@ test('registers the footer action and releases it on unload', () => {
     locale: {
       register(namespace, labels) {
         assert.equal(Object.keys(labels).length, 8)
+        for (const dictionary of Object.values(labels)) {
+          assert.ok(dictionary.expandIdle)
+          assert.ok(dictionary.collapseIdle)
+        }
         active.set('locale', namespace)
         return () => active.delete('locale')
       },

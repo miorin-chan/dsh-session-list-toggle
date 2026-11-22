@@ -34,28 +34,127 @@ __export(index_exports, {
   inject: () => inject
 });
 module.exports = __toCommonJS(index_exports);
-var import_react = require("react");
+var import_react2 = require("react");
 
 // src/client/attention.ts
-function attentionSessionIds(list, statuses, { archivedSessionIds, pinnedSessionIds }) {
+function sessionVisibility(list, statuses, { archivedSessionIds, pinnedSessionIds }) {
   const archived = new Set(archivedSessionIds);
   const pinned = new Set(pinnedSessionIds);
-  return list.ids.filter((id) => {
+  const attention = [];
+  const idle = [];
+  for (const id of list.ids) {
     const session = list.byId[id];
-    if (session === void 0 || session.origin === "subagent" || archived.has(id)) return false;
-    if (pinned.has(id)) return true;
+    if (session === void 0 || session.origin === "subagent" || archived.has(id)) continue;
     const status = statuses.get(id);
     const pending = status?.pendingInteraction?.kind;
-    if (pending === "approval" || pending === "plan-review" || pending === "question") return true;
-    if ((status?.running ?? session.running) || status?.completionUnread) return true;
-    return list.projectionsBySession[id]?.values.subagentCatalog?.some(
+    const needsAttention = pinned.has(id) || pending === "approval" || pending === "plan-review" || pending === "question" || (status?.running ?? session.running) || status?.completionUnread || list.projectionsBySession[id]?.values.subagentCatalog?.some(
       (child) => statuses.get(child.id)?.running ?? list.byId[child.id]?.running ?? false
-    ) ?? false;
-  });
+    );
+    if (needsAttention) attention.push(id);
+    else if (!session.blank) idle.push(id);
+  }
+  return { attention, idle };
+}
+
+// src/client/idle-control.tsx
+var import_react = require("react");
+var import_react_dom = require("react-dom");
+var import_jsx_runtime = require("react/jsx-runtime");
+var rowSelector = '[data-row-key^="session:"], [data-row-key^="workspace:"], [data-row-key^="overflow:"]';
+var workspaceViewKey = "dsh.workspace.view.v5";
+function isArchivedOnly() {
+  try {
+    const view = JSON.parse(window.localStorage.getItem(workspaceViewKey) ?? "null");
+    return view !== null && typeof view === "object" && "archivedFilter" in view && view.archivedFilter === "only";
+  } catch {
+    return false;
+  }
+}
+function renderedRows(list) {
+  return [...list.querySelectorAll(rowSelector)].filter(
+    (row) => !row.closest('[aria-hidden="true"]') && row.getClientRects().length > 0
+  );
+}
+function IdleControl({ listSelector, scrollportSelector, expanded, onChange, label, emptyLabel, hasArchives }) {
+  const [mount, setMount] = (0, import_react.useState)(null);
+  const [archivedOnly, setArchivedOnly] = (0, import_react.useState)(false);
+  const reveal = (0, import_react.useRef)(null);
+  const button = (0, import_react.useRef)(null);
+  const list = mount?.list ?? null;
+  const watchArchiveFilter = hasArchives && label !== void 0;
+  (0, import_react.useEffect)(() => {
+    if (!watchArchiveFilter) return;
+    const sync = () => setArchivedOnly(isArchivedOnly());
+    sync();
+    const timer = window.setInterval(sync, 250);
+    return () => window.clearInterval(timer);
+  }, [watchArchiveFilter]);
+  (0, import_react.useLayoutEffect)(() => {
+    const scrollport = document.querySelector(scrollportSelector);
+    if (scrollport === null) return;
+    const container = document.createElement("div");
+    container.dataset.dshWorkspaceListEnd = "";
+    let current = null;
+    const syncMount = () => {
+      const next = current?.isConnected ? current : document.querySelector(listSelector);
+      if (next !== null && next.lastElementChild !== container) next.append(container);
+      if (next === current) return;
+      current = next;
+      setMount(next === null ? null : { list: next, container });
+    };
+    syncMount();
+    const observer = new MutationObserver(syncMount);
+    observer.observe(scrollport, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      container.remove();
+    };
+  }, [listSelector, scrollportSelector]);
+  (0, import_react.useLayoutEffect)(() => {
+    const before = reveal.current;
+    reveal.current = null;
+    if (!expanded || list === null || before === null) return;
+    const added = renderedRows(list).filter((row) => !before.rows.has(row));
+    const first = added[0];
+    if (first === void 0) return;
+    const bounds = list.getBoundingClientRect();
+    const outer = list.closest(scrollportSelector)?.getBoundingClientRect();
+    const top = Math.max(bounds.top, outer?.top ?? 0, 0);
+    const bottom = Math.min(bounds.bottom, outer?.bottom ?? window.innerHeight, window.innerHeight);
+    const isVisible = (row) => {
+      const rect = row.getBoundingClientRect();
+      return rect.bottom > top && rect.top < bottom;
+    };
+    const visibleRows = added.filter(isVisible);
+    const trigger = button.current;
+    if (visibleRows.length > 0 && (!before.keyboard || trigger !== null && isVisible(trigger))) return;
+    const focusTarget = before.keyboard ? visibleRows.find((row) => row.tabIndex >= 0) ?? added.find((row) => row.tabIndex >= 0) : void 0;
+    const target = focusTarget ?? visibleRows[0] ?? first;
+    if (!isVisible(target)) target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+    focusTarget?.focus({ preventScroll: true });
+  }, [expanded, list, scrollportSelector]);
+  if (mount === null || list === null) return null;
+  return (0, import_react_dom.createPortal)(/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "data-dsh-workspace-attention-empty": "", children: emptyLabel }),
+    label !== void 0 && !(watchArchiveFilter && archivedOnly) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "button",
+      {
+        ref: button,
+        type: "button",
+        "data-dsh-workspace-idle-toggle": "",
+        "aria-expanded": expanded,
+        onClick: (event) => {
+          if (!expanded) reveal.current = { rows: new Set(renderedRows(list)), keyboard: event.detail === 0 };
+          onChange(!expanded);
+        },
+        children: label
+      }
+    )
+  ] }), mount.container);
 }
 
 // src/client/index.tsx
-var import_jsx_runtime = require("react/jsx-runtime");
+var import_jsx_runtime2 = require("react/jsx-runtime");
 var NS = "dsh-workspace-list-toggle";
 var EMPTY_ICON = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="black">
   <path d="M5 6.75H11" />
@@ -63,14 +162,78 @@ var EMPTY_ICON = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://ww
   <path d="M2.37067 11.2497C1.5872 9.89252 1.32042 8.29798 1.61945 6.7597C1.91847 5.22141 2.76317 3.84293 3.99801 2.87809C5.23285 1.91325 6.7747 1.427 8.33964 1.50888C9.90458 1.59076 11.3873 2.23526 12.5147 3.32369C13.6422 4.41232 14.3384 5.8717 14.4751 7.43304C14.6118 8.99438 14.1797 10.5525 13.2585 11.8205C12.3372 13.0885 10.9889 13.9809 9.4617 14.3334C8.18666 14.6277 6.8587 14.529 5.64964 14.0601C5.17095 13.8745 4.76937 13.4929 4.26509 13.3963C3.67389 13.2832 2.95232 13.5595 2.0377 14.3334" />
 </svg>`)}`;
 var LABELS = {
-  en: { hide: "Collapse session list", attention: "Show pinned sessions and sessions needing attention", show: "Show full session list", empty: "No pinned sessions or sessions needing attention", loading: "Loading sessions\u2026" },
-  zh: { hide: "\u6536\u8D77\u4F1A\u8BDD\u5217\u8868", attention: "\u663E\u793A\u7F6E\u9876\u548C\u9700\u5173\u6CE8\u7684\u4F1A\u8BDD", show: "\u663E\u793A\u5168\u90E8\u4F1A\u8BDD", empty: "\u6CA1\u6709\u7F6E\u9876\u6216\u9700\u5173\u6CE8\u7684\u4F1A\u8BDD", loading: "\u6B63\u5728\u52A0\u8F7D\u4F1A\u8BDD\u2026" },
-  ja: { hide: "\u30BB\u30C3\u30B7\u30E7\u30F3\u4E00\u89A7\u3092\u6298\u308A\u305F\u305F\u3080", attention: "\u30D4\u30F3\u7559\u3081\u6E08\u307F\u3068\u8981\u78BA\u8A8D\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3092\u8868\u793A", show: "\u3059\u3079\u3066\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3092\u8868\u793A", empty: "\u30D4\u30F3\u7559\u3081\u6E08\u307F\u3084\u8981\u78BA\u8A8D\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u306F\u3042\u308A\u307E\u305B\u3093", loading: "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026" },
-  de: { hide: "Sitzungsliste einklappen", attention: "Angeheftete Sitzungen und Sitzungen mit Handlungsbedarf anzeigen", show: "Alle Sitzungen anzeigen", empty: "Keine angehefteten Sitzungen oder Sitzungen mit Handlungsbedarf", loading: "Sitzungen werden geladen\u2026" },
-  es: { hide: "Contraer la lista de sesiones", attention: "Mostrar las sesiones fijadas y las que requieren atenci\xF3n", show: "Mostrar todas las sesiones", empty: "No hay sesiones fijadas ni sesiones que requieran atenci\xF3n", loading: "Cargando sesiones\u2026" },
-  fr: { hide: "Replier la liste des sessions", attention: "Afficher les sessions \xE9pingl\xE9es et celles \xE0 suivre", show: "Afficher toutes les sessions", empty: "Aucune session \xE9pingl\xE9e ou \xE0 suivre", loading: "Chargement des sessions\u2026" },
-  pt: { hide: "Recolher a lista de sess\xF5es", attention: "Mostrar sess\xF5es fixadas e sess\xF5es que exigem aten\xE7\xE3o", show: "Mostrar todas as sess\xF5es", empty: "N\xE3o h\xE1 sess\xF5es fixadas nem sess\xF5es que exijam aten\xE7\xE3o", loading: "Carregando sess\xF5es\u2026" },
-  ru: { hide: "\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0435\u0430\u043D\u0441\u043E\u0432", attention: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0435 \u0441\u0435\u0430\u043D\u0441\u044B \u0438 \u0441\u0435\u0430\u043D\u0441\u044B, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0435 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F", show: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0432\u0441\u0435 \u0441\u0435\u0430\u043D\u0441\u044B", empty: "\u041D\u0435\u0442 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445 \u0441\u0435\u0430\u043D\u0441\u043E\u0432 \u0438\u043B\u0438 \u0441\u0435\u0430\u043D\u0441\u043E\u0432, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0445 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F", loading: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0441\u0435\u0430\u043D\u0441\u043E\u0432\u2026" }
+  en: {
+    hide: "Collapse session list",
+    attention: "Show pinned sessions and sessions needing attention",
+    show: "Show full session list",
+    empty: "No pinned sessions or sessions needing attention",
+    loading: "Loading sessions\u2026",
+    expandIdle: "Show idle conversations",
+    collapseIdle: "Hide idle conversations"
+  },
+  zh: {
+    hide: "\u6536\u8D77\u4F1A\u8BDD\u5217\u8868",
+    attention: "\u663E\u793A\u7F6E\u9876\u548C\u9700\u5173\u6CE8\u7684\u4F1A\u8BDD",
+    show: "\u663E\u793A\u5168\u90E8\u4F1A\u8BDD",
+    empty: "\u6CA1\u6709\u7F6E\u9876\u6216\u9700\u5173\u6CE8\u7684\u4F1A\u8BDD",
+    loading: "\u6B63\u5728\u52A0\u8F7D\u4F1A\u8BDD\u2026",
+    expandIdle: "\u5C55\u5F00\u7A7A\u95F2\u5BF9\u8BDD",
+    collapseIdle: "\u6536\u8D77\u7A7A\u95F2\u5BF9\u8BDD"
+  },
+  ja: {
+    hide: "\u30BB\u30C3\u30B7\u30E7\u30F3\u4E00\u89A7\u3092\u6298\u308A\u305F\u305F\u3080",
+    attention: "\u30D4\u30F3\u7559\u3081\u6E08\u307F\u3068\u8981\u78BA\u8A8D\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3092\u8868\u793A",
+    show: "\u3059\u3079\u3066\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u3092\u8868\u793A",
+    empty: "\u30D4\u30F3\u7559\u3081\u6E08\u307F\u3084\u8981\u78BA\u8A8D\u306E\u30BB\u30C3\u30B7\u30E7\u30F3\u306F\u3042\u308A\u307E\u305B\u3093",
+    loading: "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026",
+    expandIdle: "\u5F85\u6A5F\u4E2D\u306E\u4F1A\u8A71\u3092\u8868\u793A",
+    collapseIdle: "\u5F85\u6A5F\u4E2D\u306E\u4F1A\u8A71\u3092\u975E\u8868\u793A"
+  },
+  de: {
+    hide: "Sitzungsliste einklappen",
+    attention: "Angeheftete Sitzungen und Sitzungen mit Handlungsbedarf anzeigen",
+    show: "Alle Sitzungen anzeigen",
+    empty: "Keine angehefteten Sitzungen oder Sitzungen mit Handlungsbedarf",
+    loading: "Sitzungen werden geladen\u2026",
+    expandIdle: "Inaktive Unterhaltungen anzeigen",
+    collapseIdle: "Inaktive Unterhaltungen ausblenden"
+  },
+  es: {
+    hide: "Contraer la lista de sesiones",
+    attention: "Mostrar las sesiones fijadas y las que requieren atenci\xF3n",
+    show: "Mostrar todas las sesiones",
+    empty: "No hay sesiones fijadas ni sesiones que requieran atenci\xF3n",
+    loading: "Cargando sesiones\u2026",
+    expandIdle: "Mostrar conversaciones inactivas",
+    collapseIdle: "Ocultar conversaciones inactivas"
+  },
+  fr: {
+    hide: "Replier la liste des sessions",
+    attention: "Afficher les sessions \xE9pingl\xE9es et celles \xE0 suivre",
+    show: "Afficher toutes les sessions",
+    empty: "Aucune session \xE9pingl\xE9e ou \xE0 suivre",
+    loading: "Chargement des sessions\u2026",
+    expandIdle: "Afficher les conversations inactives",
+    collapseIdle: "Masquer les conversations inactives"
+  },
+  pt: {
+    hide: "Recolher a lista de sess\xF5es",
+    attention: "Mostrar sess\xF5es fixadas e sess\xF5es que exigem aten\xE7\xE3o",
+    show: "Mostrar todas as sess\xF5es",
+    empty: "N\xE3o h\xE1 sess\xF5es fixadas nem sess\xF5es que exijam aten\xE7\xE3o",
+    loading: "Carregando sess\xF5es\u2026",
+    expandIdle: "Mostrar conversas inativas",
+    collapseIdle: "Ocultar conversas inativas"
+  },
+  ru: {
+    hide: "\u0421\u0432\u0435\u0440\u043D\u0443\u0442\u044C \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0435\u0430\u043D\u0441\u043E\u0432",
+    attention: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0435 \u0441\u0435\u0430\u043D\u0441\u044B \u0438 \u0441\u0435\u0430\u043D\u0441\u044B, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0435 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F",
+    show: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0432\u0441\u0435 \u0441\u0435\u0430\u043D\u0441\u044B",
+    empty: "\u041D\u0435\u0442 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445 \u0441\u0435\u0430\u043D\u0441\u043E\u0432 \u0438\u043B\u0438 \u0441\u0435\u0430\u043D\u0441\u043E\u0432, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0445 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F",
+    loading: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0441\u0435\u0430\u043D\u0441\u043E\u0432\u2026",
+    expandIdle: "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u043D\u0435\u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0435 \u0434\u0438\u0430\u043B\u043E\u0433\u0438",
+    collapseIdle: "\u0421\u043A\u0440\u044B\u0442\u044C \u043D\u0435\u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0435 \u0434\u0438\u0430\u043B\u043E\u0433\u0438"
+  }
 };
 var SCROLLPORT = "[data-sidebar-scrollport]";
 var HEADER = `${SCROLLPORT} [data-sidebar-workspace-header]`;
@@ -78,6 +241,8 @@ var TITLE = `${HEADER} > span:first-child`;
 var BUTTON = "[data-dsh-workspace-list-toggle]";
 var LIST = `${SCROLLPORT} [data-sidebar-list-area]`;
 var SESSION_ROW = '[data-row-key^="session:"]';
+var IDLE_BUTTON = "[data-dsh-workspace-idle-toggle]";
+var ATTENTION_EMPTY = "[data-dsh-workspace-attention-empty]";
 var BROWSING = `body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"]))`;
 var STYLE = `
   ${BUTTON} { display: none; }
@@ -143,26 +308,37 @@ var STYLE = `
 var nextMode = { all: "collapsed", collapsed: "attention", attention: "all" };
 var nextLabel = { all: "hide", collapsed: "attention", attention: "show" };
 function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }) {
+  const [showIdle, setShowIdle] = (0, import_react2.useState)(false);
   const list = useSessions((value) => value);
   const statuses = useSessionStatus((value) => value);
   const workspace = useWorkspaces((value) => value);
-  const ids = attentionSessionIds(list, statuses, workspace);
+  const { attention, idle } = sessionVisibility(list, statuses, workspace);
+  const idleIds = new Set(idle);
+  const ids = showIdle ? [...attention, ...idle] : attention;
   const pending = new Set(ids);
+  const looseIdle = new Set(idle);
   const activeSessionsByGroup = /* @__PURE__ */ new Map();
+  const idleWorkspaces = /* @__PURE__ */ new Set();
   const activeWorkspaces = workspace.items.filter((item) => {
+    for (const id of item.sessionIds) {
+      if (idleIds.has(id)) idleWorkspaces.add(item.workspaceId);
+      looseIdle.delete(id);
+    }
     const active = item.sessionIds.filter((id) => pending.delete(id));
     if (active.length === 0) return false;
     activeSessionsByGroup.set(item.workspaceId, active);
     return true;
   });
   if (pending.size > 0) activeSessionsByGroup.set("", [...pending]);
+  if (looseIdle.size > 0) idleWorkspaces.add("");
   const row = (key) => `[data-row-key="${CSS.escape(key)}"]`;
   const groupRows = [...activeSessionsByGroup.keys()].map((key) => row(`workspace:${key}`));
   const sessionRows = ids.map((id) => row(`session:${id}`));
   const keep = [...sessionRows, ...groupRows].join(", ") || ":not(*)";
   const scope = `${BROWSING}:has(${BUTTON}[data-mode="attention"]) ${LIST}`;
+  const ancestorSelectors = (path) => workspace.items.filter((candidate) => candidate.path !== path && (path.startsWith(candidate.path.replace(/\/+$/, "") + "/") || path.startsWith(candidate.path.replace(/\\+$/, "") + "\\"))).map((candidate) => row(`workspace:${candidate.workspaceId}`));
   const hiddenDescendants = activeWorkspaces.flatMap((item) => {
-    const ancestors = workspace.items.filter((candidate) => candidate.path !== item.path && (item.path.startsWith(candidate.path.replace(/\/+$/, "") + "/") || item.path.startsWith(candidate.path.replace(/\\+$/, "") + "\\"))).map((candidate) => row(`workspace:${candidate.workspaceId}`));
+    const ancestors = ancestorSelectors(item.path);
     if (ancestors.length === 0) return [];
     return [{ anchor: row(`workspace:${item.workspaceId}`), ancestors }];
   });
@@ -175,36 +351,80 @@ function AttentionFilter({ useSessions, useSessionStatus, useWorkspaces, t }) {
   }).join("");
   const activeOverflow = [...activeSessionsByGroup.keys()].map((key) => row(`overflow:${key}`)).join(", ") || ":not(*)";
   const group = 'div:has(> [data-row-key^="workspace:"], > span > [data-row-key^="workspace:"])';
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: `
-    ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(", ") || ":not(*)"})),
-    ${scope} ${group}:not(:has(${keep})),
-    ${scope} [data-row-key^="overflow:"]:not(:is(${activeOverflow})),
-    ${scope} [data-row-key="empty"] { display: none; }
-    ${overflowRules}
-    ${hiddenDescendants.map(({ anchor, ancestors }) => `
-      ${scope}:not(:has(${anchor})) ${group}:has(:is(${ancestors.join(", ")})) {
+  const idleRows = [
+    ...idle.map((id) => row(`session:${id}`)),
+    ...[...idleWorkspaces].map((id) => row(`workspace:${id}`)),
+    ...workspace.items.filter((item) => idleWorkspaces.has(item.workspaceId)).flatMap((item) => ancestorSelectors(item.path))
+  ].join(", ");
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("style", { children: `
+      ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(", ") || ":not(*)"})),
+      ${scope} ${group}:not(:has(${keep})),
+      ${scope} [data-row-key="empty"] { display: none; }
+      ${showIdle ? "" : `
+        ${scope} [data-row-key^="overflow:"]:not(:is(${activeOverflow})) { display: none; }
+        ${overflowRules}
+      `}
+      ${hiddenDescendants.map(({ anchor, ancestors }) => `
+        ${scope}:not(:has(${anchor})) ${group}:has(:is(${ancestors.join(", ")})) {
+          display: block;
+        }
+      `).join("")}
+      [data-dsh-workspace-list-end], ${IDLE_BUTTON}, ${ATTENTION_EMPTY} { display: none; }
+      ${scope} > [data-dsh-workspace-list-end] { display: block; }
+      ${emptyList} ${ATTENTION_EMPTY} {
         display: block;
+        padding-inline: 12px;
+        color: var(--dsw-alias-label-tertiary);
+        font-size: 13px;
+        line-height: 20px;
+        text-align: center;
       }
-    `).join("")}
-    ${emptyList}::before {
-      content: '';
-      display: block;
-      inline-size: 24px;
-      block-size: 24px;
-      margin: 80px auto 12px;
-      background-color: var(--dsw-alias-label-caption);
-      mask: url("${EMPTY_ICON}") center / contain no-repeat;
-    }
-    ${emptyList}::after {
-      content: ${JSON.stringify(t(list.phase === "pending" ? "loading" : "empty"))};
-      display: block;
-      padding-inline: 12px;
-      color: var(--dsw-alias-label-tertiary);
-      font-size: 13px;
-      line-height: 20px;
-      text-align: center;
-    }
-  ` });
+      ${ATTENTION_EMPTY}::before {
+        content: '';
+        display: block;
+        inline-size: 24px;
+        block-size: 24px;
+        margin: 64px auto 12px;
+        background-color: var(--dsw-alias-label-caption);
+        mask: url("${EMPTY_ICON}") center / contain no-repeat;
+      }
+      ${idleRows === "" ? "" : `${scope}:has(${idleRows}) ${IDLE_BUTTON} { display: block; }`}
+      /* WorkspaceBrowser.module.css .sessionOverflowButton (DSH ui-workspace 0.2.2-rc.5). */
+      ${IDLE_BUTTON} {
+        inline-size: 100%;
+        block-size: 28px;
+        margin-block: 4px 16px;
+        padding: 0 var(--dsh-sidebar-row-padding, 8px);
+        border: 0;
+        border-radius: var(--dsw-radius-sm);
+        background: transparent;
+        color: var(--dsw-alias-label-tertiary);
+        font-size: 12px;
+        text-align: start;
+        cursor: pointer;
+      }
+      @media (hover: hover) {
+        ${IDLE_BUTTON}:hover { color: var(--dsw-alias-label-secondary); }
+      }
+      ${IDLE_BUTTON}:focus-visible {
+        outline: var(--dsw-focus-ring-width, 1px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+        outline-offset: -2px;
+      }
+    ` }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      IdleControl,
+      {
+        listSelector: LIST,
+        scrollportSelector: SCROLLPORT,
+        expanded: showIdle,
+        onChange: setShowIdle,
+        label: idle.length > 0 ? t(showIdle ? "collapseIdle" : "expandIdle") : void 0,
+        emptyLabel: t(list.phase === "pending" ? "loading" : "empty"),
+        hasArchives: workspace.archivedSessionIds.length > 0
+      }
+    )
+  ] });
 }
 var inject = ["slots", "locale"];
 function apply(ctx) {
@@ -215,12 +435,12 @@ function apply(ctx) {
     id: NS,
     locale: NS
   }, function ListToggle({ t, wide, useSessions, useSessionStatus, useWorkspaces }) {
-    const [mode, setMode] = (0, import_react.useState)(listMode);
+    const [mode, setMode] = (0, import_react2.useState)(listMode);
     if (!wide) return null;
     const label = t(nextLabel[mode]);
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("style", { children: STYLE }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("style", { children: STYLE }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         "button",
         {
           type: "button",
@@ -233,7 +453,7 @@ function apply(ctx) {
             listMode = nextMode[mode];
             setMode(listMode);
           },
-          children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "svg",
             {
               "aria-hidden": "true",
@@ -245,12 +465,12 @@ function apply(ctx) {
               strokeWidth: "1",
               strokeLinecap: "round",
               strokeLinejoin: "round",
-              children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "m6.5 5 3 3-3 3" })
+              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "m6.5 5 3 3-3 3" })
             }
           )
         }
       ),
-      mode === "attention" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AttentionFilter, { ...{ t, useSessions, useSessionStatus, useWorkspaces } })
+      mode === "attention" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AttentionFilter, { ...{ t, useSessions, useSessionStatus, useWorkspaces } })
     ] });
   }));
 }
