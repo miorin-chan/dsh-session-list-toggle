@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Visibilidade da lista de espaços de trabalho",
-    "description": "Mostre ou oculte a lista da barra lateral com a seta ao lado do título."
+    "title": "Três modos para a lista lateral",
+    "description": "Clique na seta ao lado do título de espaços de trabalho ou sessões para alternar entre Todas → Recolhida → Exigem atenção. O último modo mostra as sessões fixadas, em andamento, à espera de aprovação, revisão do plano ou resposta, e as concluídas que você ainda não leu."
   }
 }

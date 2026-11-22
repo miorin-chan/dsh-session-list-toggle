@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Visibilidad de la lista de espacios de trabajo",
-    "description": "Muestra u oculta la lista de la barra lateral con la flecha al lado del encabezado."
+    "title": "Tres modos para la lista lateral",
+    "description": "Haz clic en la flecha junto al encabezado de espacios de trabajo o sesiones para alternar entre Todas → Contraída → Requieren atención. El último modo muestra las sesiones fijadas, en curso, pendientes de aprobación, revisión del plan o respuesta, y las finalizadas que aún no has leído."
   }
 }

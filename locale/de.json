@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Arbeitsbereichsliste ein- und ausblenden",
-    "description": "Die Liste in der Seitenleiste mit dem Pfeil neben der Überschrift ein- oder ausblenden."
+    "title": "Drei Ansichten für die Seitenleistenliste",
+    "description": "Klicke in der Seitenleiste auf den Pfeil neben Arbeitsbereiche oder Sitzungen, um zwischen Alle → Eingeklappt → Handlungsbedarf zu wechseln. Die letzte Ansicht zeigt angeheftete und laufende Sitzungen, Sitzungen mit ausstehender Genehmigung, Planprüfung oder Antwort sowie abgeschlossene, ungelesene Sitzungen."
   }
 }

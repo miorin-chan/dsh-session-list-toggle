@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "Hide or show the sidebar list with the chevron beside its heading.",
+  "description": "Cycle the sidebar list through three modes: all, collapsed, and sessions needing attention.",
   "type": "module",
   "keywords": [
     "deepseek-harness",

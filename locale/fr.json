@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Affichage de la liste des espaces de travail",
-    "description": "Affiche ou masque la liste latérale avec la flèche à côté du titre."
+    "title": "Trois modes pour la liste latérale",
+    "description": "Cliquez sur la flèche près du titre des espaces de travail ou des sessions pour passer d’un mode à l’autre dans l’ordre Toutes → Repliée → À suivre. Le dernier mode affiche les sessions épinglées, en cours, en attente d’approbation, de relecture du plan ou d’une réponse, ainsi que les sessions terminées et non lues."
   }
 }

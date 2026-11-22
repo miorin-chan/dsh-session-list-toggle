@@ -1,4 +1,4 @@
-# Workspace list toggle
+# Three sidebar list modes
 
 [简体中文](README.zh.md)
 
