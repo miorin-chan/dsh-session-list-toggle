@@ -2,3 +2,7 @@ node_modules/
 /index.js
 /client.js
 .DS_Store
+
+# Compiled tooling
+/scripts/build.mjs
+/scripts/sync-types.mjs
