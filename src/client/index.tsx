@@ -255,7 +255,7 @@ export const inject = ['slots', 'locale']
 
 export function apply(ctx: Context): void {
   // Keep the preference for this page even if the sidebar footer remounts.
-  let listMode: Mode = 'all'
+  let listMode: Mode = 'attention'
   const draftSource = connectDrafts(ctx)
   ctx.effect(() => ctx.locale.register(NS, LABELS))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({

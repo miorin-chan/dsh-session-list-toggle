@@ -17,7 +17,7 @@ Once all idle sessions in that workspace are visible, **Show fewer idle conversa
 The **Ungrouped** section has its own button, and the flat **Sessions** view has one button at the bottom.
 Search temporarily shows native results and restores the previous mode when closed.
 The next time you enter **Needs attention**, idle conversations start collapsed.
-The page starts in full-list mode.
+The page starts in **Needs attention**.
 
 Requires DeepSeek Harness 0.2.2-rc.5 or newer.
 Install this directory with **Plugins → Add plugin**.

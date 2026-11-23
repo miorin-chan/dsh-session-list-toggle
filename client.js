@@ -831,7 +831,7 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
 }
 var inject = ["slots", "locale"];
 function apply(ctx) {
-  let listMode = "all";
+  let listMode = "attention";
   const draftSource = connectDrafts(ctx);
   ctx.effect(() => ctx.locale.register(NS, LABELS));
   ctx.slots.inject("sidebar.footer.action", () => ctx.slots.register({
