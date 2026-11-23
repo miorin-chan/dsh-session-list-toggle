@@ -1,5 +1,5 @@
 {
-  "name": "dsh-workspace-list-toggle",
+  "name": "@miorin/dsh-workspace-list-toggle",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",

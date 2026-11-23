@@ -9,7 +9,7 @@ delete globalThis.window
 const plugin = registration.factory(createRequire(import.meta.url))
 
 test('registers the footer action and releases it on unload', () => {
-  assert.equal(registration.id, 'dsh-workspace-list-toggle')
+  assert.equal(registration.id, '@miorin/dsh-workspace-list-toggle')
   assert.deepEqual(plugin.inject, ['slots', 'locale'])
 
   const cleanups = []
@@ -42,9 +42,9 @@ test('registers the footer action and releases it on unload', () => {
   }
 
   plugin.apply(ctx)
-  assert.equal(active.get('locale'), registration.id)
+  assert.equal(active.get('locale'), 'dsh-workspace-list-toggle')
   assert.deepEqual(active.get('footer'), {
-    name: 'sidebar.footer.action', id: registration.id, locale: registration.id,
+    name: 'sidebar.footer.action', id: 'dsh-workspace-list-toggle', locale: 'dsh-workspace-list-toggle',
   })
   for (const cleanup of cleanups.reverse()) cleanup()
   assert.equal(active.size, 0)

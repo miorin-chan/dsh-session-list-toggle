@@ -2,4 +2,4 @@
 # package.json `dsh.client` and carries Workspace list toggle.
 - insert:
     - id: dsh-workspace-list-toggle
-      name: 'dsh-workspace-list-toggle'
+      name: '@miorin/dsh-workspace-list-toggle'
