@@ -1,7 +1,6 @@
 {
   "name": "@miorin/dsh-workspace-list-toggle",
   "version": "0.1.0",
-  "private": true,
   "license": "MIT",
   "description": "Cycle the sidebar list through three modes: all, collapsed, and sessions needing attention.",
   "type": "module",
@@ -72,5 +71,8 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "typescript": "5.7.3"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
