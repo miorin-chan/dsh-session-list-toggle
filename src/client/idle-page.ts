@@ -7,6 +7,19 @@ const OVERFLOW_ROW = `button[data-row-key^="${OVERFLOW}"][aria-expanded="false"]
 const OWN_SESSIONS = `:scope > ${SESSION_ROW}, :scope > :not([role="group"]) > ${SESSION_ROW}`
 const GROUP_PAGE_ROWS = `${OWN_SESSIONS}, :scope > ${OVERFLOW_ROW}`
 
+export type IdleScopeKey = string | null // null is the flat view; '' is the native Ungrouped key.
+// A workspace remains in the map after its idle rows have been collapsed.
+export type IdlePages = ReadonlyMap<IdleScopeKey, readonly string[] | null>
+
+export function updateIdlePages(previous: IdlePages, key: IdleScopeKey, selection: string[] | null): IdlePages {
+  const workspace = key !== null && key !== ''
+  if (workspace && !selection?.length && !previous.has(key)) return previous
+  const next = new Map(previous)
+  if (!workspace && selection === null) next.delete(key)
+  else next.set(key, workspace && !selection?.length ? null : selection)
+  return next
+}
+
 export function scanIdlePage(
   section: HTMLElement,
   idle: ReadonlySet<string>,

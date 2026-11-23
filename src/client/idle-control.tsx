@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { IDLE_PAGE_SIZE, loadNativePage, scanIdlePage } from './idle-page.js'
+import type { IdlePages, IdleScopeKey } from './idle-page.js'
 // ui-workspace 0.2.2-rc.5 stores this view preference locally and exposes no slot prop for it.
 const workspaceViewKey = 'dsh.workspace.view.v5'
 const WORKSPACE = 'workspace:'
 const WORKSPACE_ROW = `[data-row-key^="${WORKSPACE}"]`
 const EMPTY_SELECTION: readonly string[] = []
 
-type ScopeKey = string | null // null is the flat view; '' is the native Ungrouped key.
-type Scope = { key: ScopeKey; row: HTMLElement; section: HTMLElement; container: HTMLElement }
+type Scope = { key: IdleScopeKey; row: HTMLElement; section: HTMLElement; container: HTMLElement }
 
 interface IdleControlsProps {
   listSelector: string
@@ -16,8 +16,8 @@ interface IdleControlsProps {
   browsingSelector: string
   idle: ReadonlySet<string>
   idleGroups: ReadonlyMap<string, ReadonlySet<string>>
-  shown: ReadonlyMap<ScopeKey, readonly string[]>
-  onChange: (key: ScopeKey, shown: string[] | null) => void
+  shown: IdlePages
+  onChange: (key: IdleScopeKey, shown: string[] | null) => void
   moreLabel: string
   collapseLabel: string
   loadingLabel: string

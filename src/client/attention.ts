@@ -1,6 +1,7 @@
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { IdlePages } from './idle-page.js'
 
 export function sessionVisibility(
   list: SessionListState,
@@ -28,4 +29,33 @@ export function sessionVisibility(
     else if (!session.blank) idle.push(id)
   }
   return { attention, idle }
+}
+
+export function workspaceVisibility(
+  items: WorkspaceSnapshot['items'],
+  attention: readonly string[],
+  idle: readonly string[],
+  shown: IdlePages,
+  archivedOnly: boolean,
+) {
+  const pending = new Set(attention)
+  const looseIdle = new Set(idle)
+  const activeSessionsByGroup = new Map<string, string[]>()
+  const idleGroups = new Map<string, ReadonlySet<string>>()
+  for (const item of items) {
+    const groupIdle = item.sessionIds.filter(id => looseIdle.delete(id))
+    if (groupIdle.length > 0) idleGroups.set(item.workspaceId, new Set(groupIdle))
+    const active = item.sessionIds.filter(id => pending.delete(id))
+    if (active.length > 0) activeSessionsByGroup.set(item.workspaceId, active)
+  }
+  if (pending.size > 0) activeSessionsByGroup.set('', [...pending]) // Native Ungrouped key.
+  if (looseIdle.size > 0) idleGroups.set('', looseIdle)
+  const keptGroups = new Set(activeSessionsByGroup.keys())
+  const groupedIds = [...attention]
+  for (const [key, candidates] of archivedOnly ? [] : idleGroups) {
+    if (key !== '' && !shown.has(key)) continue
+    keptGroups.add(key)
+    groupedIds.push(...(shown.get(key) ?? []).filter(id => candidates.has(id)))
+  }
+  return { activeSessionsByGroup, idleGroups, keptGroups, groupedIds }
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { sessionVisibility } from '../src/client/attention.ts'
+import { sessionVisibility, workspaceVisibility } from '../src/client/attention.ts'
+import { updateIdlePages } from '../src/client/idle-page.ts'
 
 const session = (id, fields = {}) => ({ id, updatedAt: 1, running: false, ...fields })
 const status = fields => ({ running: false, completionUnread: false, ...fields })
@@ -113,4 +114,31 @@ test('keeps idle pinned sessions and reapplies attention rules when they are unp
   assert.deepEqual(sessionVisibility(list, statuses, { ...workspace, pinnedSessionIds: [] }), {
     attention: ['running-pinned'], idle: ['idle-pinned', 'unpinned'],
   })
+})
+
+test('keeps workspaces with attention or previously disclosed idle sessions', () => {
+  const items = [
+    { workspaceId: 'opened', sessionIds: ['current', 'opened-idle'] },
+    { workspaceId: 'untouched', sessionIds: ['untouched-idle'] },
+    { workspaceId: 'empty', sessionIds: [] },
+  ]
+  const idle = ['opened-idle', 'untouched-idle', 'loose-idle']
+  const fresh = new Map()
+  const initial = workspaceVisibility(items, ['current'], idle, fresh, false)
+  assert.deepEqual([...initial.keptGroups], ['opened', ''])
+  assert.deepEqual(initial.groupedIds, ['current'])
+  assert.ok(initial.idleGroups.get('opened').has('opened-idle'))
+  assert.equal(updateIdlePages(fresh, 'opened', []), fresh)
+
+  const shown = updateIdlePages(fresh, 'opened', ['opened-idle'])
+  const afterFocusMoves = workspaceVisibility(items, [], idle, shown, false)
+  assert.deepEqual([...afterFocusMoves.keptGroups], ['opened', ''])
+  assert.deepEqual(afterFocusMoves.groupedIds, ['opened-idle'])
+  const collapsed = updateIdlePages(shown, 'opened', null)
+  assert.equal(collapsed.get('opened'), null)
+  const afterCollapse = workspaceVisibility(items, [], idle, collapsed, false)
+  assert.deepEqual([...afterCollapse.keptGroups], ['opened', ''])
+  assert.deepEqual(afterCollapse.groupedIds, [])
+  assert.deepEqual([...workspaceVisibility(items, [], idle, fresh, false).keptGroups], [''])
+  assert.deepEqual([...workspaceVisibility(items, [], idle, shown, true).keptGroups], [])
 })

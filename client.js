@@ -56,6 +56,28 @@ function sessionVisibility(list, statuses, { archivedSessionIds, pinnedSessionId
   }
   return { attention, idle };
 }
+function workspaceVisibility(items, attention, idle, shown, archivedOnly) {
+  const pending = new Set(attention);
+  const looseIdle = new Set(idle);
+  const activeSessionsByGroup = /* @__PURE__ */ new Map();
+  const idleGroups = /* @__PURE__ */ new Map();
+  for (const item of items) {
+    const groupIdle = item.sessionIds.filter((id) => looseIdle.delete(id));
+    if (groupIdle.length > 0) idleGroups.set(item.workspaceId, new Set(groupIdle));
+    const active = item.sessionIds.filter((id) => pending.delete(id));
+    if (active.length > 0) activeSessionsByGroup.set(item.workspaceId, active);
+  }
+  if (pending.size > 0) activeSessionsByGroup.set("", [...pending]);
+  if (looseIdle.size > 0) idleGroups.set("", looseIdle);
+  const keptGroups = new Set(activeSessionsByGroup.keys());
+  const groupedIds = [...attention];
+  for (const [key, candidates] of archivedOnly ? [] : idleGroups) {
+    if (key !== "" && !shown.has(key)) continue;
+    keptGroups.add(key);
+    groupedIds.push(...(shown.get(key) ?? []).filter((id) => candidates.has(id)));
+  }
+  return { activeSessionsByGroup, idleGroups, keptGroups, groupedIds };
+}
 
 // src/client/drafts.ts
 var service = "sessionDraftIndicators";
@@ -106,6 +128,14 @@ var SESSION_ROW = `[data-row-key^="${SESSION}"]`;
 var OVERFLOW_ROW = `button[data-row-key^="${OVERFLOW}"][aria-expanded="false"]`;
 var OWN_SESSIONS = `:scope > ${SESSION_ROW}, :scope > :not([role="group"]) > ${SESSION_ROW}`;
 var GROUP_PAGE_ROWS = `${OWN_SESSIONS}, :scope > ${OVERFLOW_ROW}`;
+function updateIdlePages(previous, key, selection) {
+  const workspace = key !== null && key !== "";
+  if (workspace && !selection?.length && !previous.has(key)) return previous;
+  const next = new Map(previous);
+  if (!workspace && selection === null) next.delete(key);
+  else next.set(key, workspace && !selection?.length ? null : selection);
+  return next;
+}
 function scanIdlePage(section, idle, groupKey, shown, remaining) {
   const rows = [...section.querySelectorAll(groupKey === null ? SESSION_ROW : GROUP_PAGE_ROWS)].filter((row) => !row.closest('[aria-hidden="true"]'));
   const mounted = new Set(rows.map((row) => row.dataset.rowKey));
@@ -560,24 +590,13 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
   const { attention, idle } = sessionVisibility(list, statuses, workspace, { current, drafts });
   const idleIds = new Set(idle);
   const archivedOnly = useArchivedOnly(workspace.archivedSessionIds.length > 0);
-  const pending = new Set(attention);
-  const looseIdle = new Set(idle);
-  const activeSessionsByGroup = /* @__PURE__ */ new Map();
-  const idleGroups = /* @__PURE__ */ new Map();
-  for (const item of workspace.items) {
-    const groupIdle = item.sessionIds.filter((id) => looseIdle.delete(id));
-    if (groupIdle.length > 0) idleGroups.set(item.workspaceId, new Set(groupIdle));
-    const active = item.sessionIds.filter((id) => pending.delete(id));
-    if (active.length > 0) activeSessionsByGroup.set(item.workspaceId, active);
-  }
-  if (pending.size > 0) activeSessionsByGroup.set("", [...pending]);
-  if (looseIdle.size > 0) idleGroups.set("", looseIdle);
-  const keptGroups = new Set(activeSessionsByGroup.keys());
-  const groupedIds = [...attention];
-  for (const [key, candidates] of archivedOnly ? [] : idleGroups) {
-    keptGroups.add(key);
-    groupedIds.push(...(shown.get(key) ?? []).filter((id) => candidates.has(id)));
-  }
+  const { activeSessionsByGroup, idleGroups, keptGroups, groupedIds } = workspaceVisibility(
+    workspace.items,
+    attention,
+    idle,
+    shown,
+    archivedOnly
+  );
   const flatIds = [...attention, ...(archivedOnly ? [] : shown.get(null) ?? []).filter((id) => idleIds.has(id))];
   const activeWorkspaces = workspace.items.filter((item) => keptGroups.has(item.workspaceId));
   const row = (key) => `[data-row-key="${CSS.escape(key)}"]`;
@@ -674,12 +693,7 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
         idle: idleIds,
         idleGroups,
         shown,
-        onChange: (key, selection) => setShown((previous) => {
-          const next = new Map(previous);
-          if (selection === null) next.delete(key);
-          else next.set(key, selection);
-          return next;
-        }),
+        onChange: (key, selection) => setShown((previous) => updateIdlePages(previous, key, selection)),
         moreLabel: t("expandIdle"),
         collapseLabel: t("collapseIdle"),
         loadingLabel: t("loading"),
