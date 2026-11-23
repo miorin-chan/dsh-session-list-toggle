@@ -22,6 +22,9 @@ const EMPTY_ICON = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://
   <path d="M5 9H8" />
   <path d="M2.37067 11.2497C1.5872 9.89252 1.32042 8.29798 1.61945 6.7597C1.91847 5.22141 2.76317 3.84293 3.99801 2.87809C5.23285 1.91325 6.7747 1.427 8.33964 1.50888C9.90458 1.59076 11.3873 2.23526 12.5147 3.32369C13.6422 4.41232 14.3384 5.8717 14.4751 7.43304C14.6118 8.99438 14.1797 10.5525 13.2585 11.8205C12.3372 13.0885 10.9889 13.9809 9.4617 14.3334C8.18666 14.6277 6.8587 14.529 5.64964 14.0601C5.17095 13.8745 4.76937 13.4929 4.26509 13.3963C3.67389 13.2832 2.95232 13.5595 2.0377 14.3334" />
 </svg>`)}`
+// DSH IconTriangleRightFillRegular artwork (sprite `dsw-icon-triangle-right-fill-regular`),
+// the disclosure arrow of native workspace rows. See THIRD-PARTY-NOTICES.txt.
+const TRIANGLE = 'M5.5 4.5C5.5 4.40714 5.52586 4.31612 5.57467 4.23713C5.62349 4.15815 5.69334 4.09431 5.77639 4.05279C5.85945 4.01126 5.95242 3.99368 6.0449 4.00202C6.13738 4.01036 6.22572 4.04429 6.3 4.1L10.967 7.6C11.0291 7.64657 11.0795 7.70697 11.1142 7.77639C11.1489 7.84582 11.167 7.92238 11.167 8C11.167 8.07762 11.1489 8.15418 11.1142 8.22361C11.0795 8.29303 11.0291 8.35343 10.967 8.4L6.3 11.9C6.22572 11.9557 6.13738 11.9896 6.0449 11.998C5.95242 12.0063 5.85945 11.9887 5.77639 11.9472C5.69334 11.9057 5.62349 11.8419 5.57467 11.7629C5.52586 11.6839 5.5 11.5929 5.5 11.5V4.5Z'
 
 const LABELS = {
   en: { hide: 'Collapse session list', attention: 'Show the current session, pinned sessions, and sessions needing attention', show: 'Show full session list', empty: 'No pinned sessions or sessions needing attention', loading: 'Loading sessions…',
@@ -95,19 +98,27 @@ const STYLE = `
     border: 0;
     border-radius: 6px;
     background: transparent;
-    color: var(--dsw-alias-content-secondary, currentColor);
+    /* Rows.module.css .chevron and WorkspaceBrowser.module.css .iconButton (DSH ui-workspace 0.2.2-rc.5). */
+    color: var(--dsw-alias-label-caption);
     cursor: pointer;
   }
-  ${BUTTON}:hover { background: var(--dsw-alias-fill-hover, transparent); }
+  @media (hover: hover) {
+    ${BUTTON}:hover {
+      background: var(--dsw-alias-interactive-bg-hover);
+      color: var(--dsw-alias-label-secondary);
+    }
+  }
   ${BUTTON}:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
+  /* Down means the list is open; the hollow arrow marks the partial Needs attention list. */
   ${BUTTON} > svg {
-    transform: rotate(0deg);
+    transform: rotate(90deg);
     transition: transform ${LIST_MOTION_MS}ms var(--ds-ease-in-out, ease-in-out);
   }
-  ${BUTTON}[data-mode="all"] > svg { transform: rotate(90deg); }
-  ${BUTTON}[data-mode="attention"] > svg { transform: rotate(45deg); }
+  ${BUTTON}[data-mode="collapsed"] > svg { transform: rotate(0deg); }
+  ${BUTTON} path { transition: fill-opacity ${LIST_MOTION_MS}ms var(--ds-ease-in-out, ease-in-out); }
+  ${BUTTON}[data-mode="attention"] path { fill-opacity: 0; }
   @media (prefers-reduced-motion: reduce) {
-    ${BUTTON} > svg { transition: none; }
+    ${BUTTON} > svg, ${BUTTON} path { transition: none; }
   }
 `
 
@@ -281,9 +292,9 @@ export function apply(ctx: Context): void {
           setMode(next)
         }}
       >
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"
-          stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-          <path d="m6.5 5 3 3-3 3" />
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"
+          stroke="currentColor" strokeWidth="1" strokeLinejoin="round">
+          <path d={TRIANGLE} />
         </svg>
       </button>
       {mode === 'attention' && <AttentionFilter {...{ t, usePanelInfo, useSessions, useSessionStatus, useWorkspaces, draftSource }} />}

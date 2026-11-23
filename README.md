@@ -2,7 +2,7 @@
 
 [简体中文](README.zh.md)
 
-Use the chevron beside Workspaces or Sessions to cycle through **All → Collapsed → Needs attention**.
+Use the arrow beside Workspaces or Sessions to cycle through **All → Collapsed → Needs attention**.
 **Needs attention** keeps the current session in its usual group and position.
 It also keeps pinned sessions and sessions with pending approvals, plan reviews or questions,
 ongoing work (including subagents), or unread completions.

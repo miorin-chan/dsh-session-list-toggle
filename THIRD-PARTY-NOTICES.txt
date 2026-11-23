@@ -1,5 +1,9 @@
 The session-list empty-state glyph uses IconQueueOutlineRegular artwork
 from @deepseek-ai/dsh-client-ui-primitives 0.2.2-rc.5.
+The list-mode arrow uses IconTriangleRightFillRegular artwork
+from @deepseek-ai/dsh-client-ui-primitives 0.2.2-rc.5.
+Its colors follow `.chevron` in src/client/rows/Rows.module.css and `.iconButton`
+in src/client/rows/WorkspaceBrowser.module.css of @deepseek-ai/dsh-client-ui-workspace 0.2.2-rc.5.
 The idle toggle style is adapted from `.sessionOverflowButton` in
 @deepseek-ai/dsh-client-ui-workspace 0.2.2-rc.5, src/client/rows/WorkspaceBrowser.module.css.
 
