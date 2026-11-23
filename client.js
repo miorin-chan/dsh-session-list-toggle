@@ -34,7 +34,7 @@ __export(index_exports, {
   inject: () => inject
 });
 module.exports = __toCommonJS(index_exports);
-var import_react2 = require("react");
+var import_react3 = require("react");
 
 // src/client/attention.ts
 function sessionVisibility(list, statuses, { archivedSessionIds, pinnedSessionIds }, { current, drafts } = {}) {
@@ -423,6 +423,144 @@ function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, id
   ), container);
 }
 
+// src/client/list-motion.ts
+var import_react2 = require("react");
+var LIST_MOTION_MS = 180;
+var LIST_CLOSING = "data-dsh-workspace-list-closing";
+var ROW = '[data-row-key]:not([aria-hidden="true"], [aria-hidden="true"] *)';
+function readRows(list) {
+  return [...list.querySelectorAll(ROW)].flatMap((row) => {
+    const rect = row.getBoundingClientRect();
+    return rect.height > 0 ? [{ row, top: rect.top, bottom: rect.bottom }] : [];
+  });
+}
+function useListMotion(mode, wide, selector, scrollportSelector) {
+  const pending = (0, import_react2.useRef)(null);
+  const activeList = (0, import_react2.useRef)(null);
+  const deferredOpen = (0, import_react2.useRef)(null);
+  const viewportMotion = (0, import_react2.useRef)(null);
+  const rowMotions = (0, import_react2.useRef)(/* @__PURE__ */ new Set());
+  function stopViewport() {
+    if (deferredOpen.current !== null) cancelAnimationFrame(deferredOpen.current.frame);
+    deferredOpen.current = null;
+    const current = viewportMotion.current;
+    viewportMotion.current = null;
+    current?.animation.cancel();
+    current?.list.removeAttribute(LIST_CLOSING);
+  }
+  function stopRows() {
+    for (const animation of rowMotions.current) animation.cancel();
+    rowMotions.current.clear();
+  }
+  (0, import_react2.useLayoutEffect)(() => {
+    if (!wide) return;
+    const scrollport = document.querySelector(scrollportSelector);
+    if (scrollport === null) return;
+    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const stop = () => {
+      stopViewport();
+      stopRows();
+      pending.current = null;
+      activeList.current = null;
+    };
+    const active = () => deferredOpen.current !== null || viewportMotion.current !== null || rowMotions.current.size > 0;
+    const observer = new MutationObserver(() => {
+      if (active() && scrollport.querySelector(selector) !== activeList.current) stop();
+    });
+    observer.observe(scrollport, { childList: true, subtree: true, attributes: true, attributeFilter: ["tabindex"] });
+    const onPreferenceChange = () => {
+      if (motionPreference.matches) stop();
+    };
+    const onFocus = (event) => {
+      if (active() && event.target instanceof Node && activeList.current?.contains(event.target)) stop();
+    };
+    motionPreference.addEventListener("change", onPreferenceChange);
+    scrollport.addEventListener("focusin", onFocus);
+    return () => {
+      observer.disconnect();
+      motionPreference.removeEventListener("change", onPreferenceChange);
+      scrollport.removeEventListener("focusin", onFocus);
+      stop();
+    };
+  }, [wide, selector, scrollportSelector]);
+  (0, import_react2.useLayoutEffect)(() => {
+    const snapshot = pending.current;
+    pending.current = null;
+    if (snapshot === null || !wide) return;
+    const { list, before, rows } = snapshot;
+    if (!list.isConnected || !list.matches(selector)) return;
+    activeList.current = list;
+    const closing = mode === "collapsed";
+    if (closing && before.height > 0) list.setAttribute(LIST_CLOSING, "");
+    const options = {
+      duration: LIST_MOTION_MS,
+      easing: getComputedStyle(list).getPropertyValue("--ds-ease-in-out").trim() || "ease-in-out"
+    };
+    function animateViewport(height) {
+      if (before.height === height) return;
+      const animation = list.animate({
+        flexBasis: [`${before.height}px`, `${height}px`],
+        flexGrow: [0, 0],
+        flexShrink: [0, 0]
+      }, { ...options, fill: "both" });
+      viewportMotion.current = { list, animation };
+      animation.onfinish = () => {
+        if (viewportMotion.current?.animation === animation) stopViewport();
+      };
+    }
+    function open() {
+      if (!list.isConnected || !list.matches(selector)) return;
+      const after = list.getBoundingClientRect();
+      const nextRows = rows === null ? [] : readRows(list);
+      const viewport = list.closest(scrollportSelector)?.getBoundingClientRect();
+      const visibleTop = Math.max(after.top, viewport?.top ?? 0, 0);
+      const visibleBottom = Math.min(after.bottom, viewport?.bottom ?? window.innerHeight, window.innerHeight);
+      animateViewport(after.height);
+      if (rows === null) return;
+      let boundary = [...rows.values()].at(-1)?.bottom ?? after.top;
+      for (const { row, top, bottom } of nextRows.reverse()) {
+        const old = rows.get(row);
+        if (old !== void 0) boundary = old.top;
+        if (old === void 0 && mode !== "all") continue;
+        const start = old?.top ?? boundary;
+        const end = old?.bottom ?? start;
+        if (Math.max(end, bottom) <= visibleTop || Math.min(start, top) >= visibleBottom) continue;
+        const offset = start - top;
+        if (old !== void 0 && Math.abs(offset) < 0.5) continue;
+        const frames = { translate: [`0 ${offset}px`, "0 0"] };
+        if (old === void 0) frames.clipPath = ["inset(0 0 100% 0)", "inset(0)"];
+        const animation = row.animate(frames, { ...options, fill: "backwards" });
+        rowMotions.current.add(animation);
+        animation.onfinish = () => rowMotions.current.delete(animation);
+      }
+    }
+    if (closing) {
+      animateViewport(0);
+    } else if (mode === "attention") {
+      const frame = requestAnimationFrame(() => {
+        deferredOpen.current = null;
+        open();
+      });
+      deferredOpen.current = { frame, before };
+    } else {
+      open();
+    }
+  }, [mode, wide, selector, scrollportSelector]);
+  return (next) => {
+    const list = document.querySelector(selector);
+    const animate = list !== null && typeof list.animate === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches && (next !== "collapsed" || CSS.supports("interactivity: inert"));
+    if (animate) {
+      const deferred = deferredOpen.current;
+      const before = deferred?.before ?? list.getBoundingClientRect();
+      const trackRows = deferred === null && (next === "all" || next === "attention" && before.height > 0);
+      const rows = trackRows ? new Map(readRows(list).map(({ row, top, bottom }) => [row, { top, bottom }])) : null;
+      pending.current = { list, before, rows };
+    }
+    stopViewport();
+    if (!animate || next !== "collapsed") stopRows();
+  };
+}
+
 // src/client/index.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
 var NS = "dsh-workspace-list-toggle";
@@ -526,21 +664,10 @@ var STYLE = `
       margin-right: 24px;
     }
     ${BROWSING}:has(${BUTTON}[aria-expanded="false"]) ${LIST} { display: none; }
-    /* Match the native scroller's viewport cap so long lists start shrinking immediately. */
-    @supports (block-size: calc-size(auto, min(size, 100cqh))) and (interactivity: inert) {
-      ${BROWSING}:has(${BUTTON}) ${LIST} {
-        flex: 0 1 auto;
-        block-size: calc-size(auto, min(size, 100cqh - var(--workspace-toolbar-height, 36px)));
-        transition: block-size 180ms ease-in-out, opacity 180ms ease-in-out, visibility 180ms;
-      }
-      ${BROWSING}:has(${BUTTON}[aria-expanded="false"]) ${LIST} {
-        display: block;
-        block-size: 0;
-        opacity: 0;
-        visibility: hidden;
-        interactivity: inert;
-        pointer-events: none;
-      }
+    ${BROWSING}:has(${BUTTON}[aria-expanded="false"]) ${LIST}[${LIST_CLOSING}] {
+      display: block;
+      interactivity: inert;
+      pointer-events: none;
     }
     ${BROWSING} ${BUTTON} {
       display: grid;
@@ -568,23 +695,22 @@ var STYLE = `
   ${BUTTON}:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
   ${BUTTON} > svg {
     transform: rotate(0deg);
-    transition: transform 160ms ease-in-out;
+    transition: transform ${LIST_MOTION_MS}ms var(--ds-ease-in-out, ease-in-out);
   }
   ${BUTTON}[data-mode="all"] > svg { transform: rotate(90deg); }
   ${BUTTON}[data-mode="attention"] > svg { transform: rotate(45deg); }
   @media (prefers-reduced-motion: reduce) {
-    ${BUTTON} > svg,
-    ${BROWSING}:has(${BUTTON}) ${LIST} { transition: none; }
+    ${BUTTON} > svg { transition: none; }
   }
 `;
 var nextMode = { all: "collapsed", collapsed: "attention", attention: "all" };
 var nextLabel = { all: "hide", collapsed: "attention", attention: "show" };
 function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorkspaces, t, draftSource }) {
-  const [shown, setShown] = (0, import_react2.useState)(() => /* @__PURE__ */ new Map());
+  const [shown, setShown] = (0, import_react3.useState)(() => /* @__PURE__ */ new Map());
   const list = useSessions((value) => value);
   const statuses = useSessionStatus((value) => value);
   const workspace = useWorkspaces((value) => value);
-  const drafts = (0, import_react2.useSyncExternalStore)(draftSource.subscribe, draftSource.getSnapshot);
+  const drafts = (0, import_react3.useSyncExternalStore)(draftSource.subscribe, draftSource.getSnapshot);
   const panelActive = usePanelInfo((info) => info.activePanelId !== null);
   const current = panelActive ? void 0 : Object.values(list.byId).find((session) => (session.retainedBy.mainView ?? 0) > 0)?.id;
   const { attention, idle } = sessionVisibility(list, statuses, workspace, { current, drafts });
@@ -713,7 +839,8 @@ function apply(ctx) {
     id: NS,
     locale: NS
   }, function ListToggle({ t, wide, usePanelInfo, useSessions, useSessionStatus, useWorkspaces }) {
-    const [mode, setMode] = (0, import_react2.useState)(listMode);
+    const [mode, setMode] = (0, import_react3.useState)(listMode);
+    const prepareMotion = useListMotion(mode, wide, `${BROWSING} ${LIST}`, SCROLLPORT);
     if (!wide) return null;
     const label = t(nextLabel[mode]);
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
@@ -728,8 +855,10 @@ function apply(ctx) {
           "aria-label": label,
           title: label,
           onClick: () => {
-            listMode = nextMode[mode];
-            setMode(listMode);
+            const next = nextMode[mode];
+            prepareMotion(next);
+            listMode = next;
+            setMode(next);
           },
           children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "svg",

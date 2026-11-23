@@ -13,6 +13,7 @@ import { connectDrafts } from './drafts.js'
 import { IdleControls, useArchivedOnly } from './idle-control.js'
 import { updateIdlePages } from './idle-page.js'
 import type { IdlePages } from './idle-page.js'
+import { LIST_CLOSING, LIST_MOTION_MS, useListMotion } from './list-motion.js'
 
 const NS = 'dsh-workspace-list-toggle'
 // DSH IconQueueOutlineRegular artwork. See THIRD-PARTY-NOTICES.txt.
@@ -70,21 +71,10 @@ const STYLE = `
       margin-right: 24px;
     }
     ${BROWSING}:has(${BUTTON}[aria-expanded="false"]) ${LIST} { display: none; }
-    /* Match the native scroller's viewport cap so long lists start shrinking immediately. */
-    @supports (block-size: calc-size(auto, min(size, 100cqh))) and (interactivity: inert) {
-      ${BROWSING}:has(${BUTTON}) ${LIST} {
-        flex: 0 1 auto;
-        block-size: calc-size(auto, min(size, 100cqh - var(--workspace-toolbar-height, 36px)));
-        transition: block-size 180ms ease-in-out, opacity 180ms ease-in-out, visibility 180ms;
-      }
-      ${BROWSING}:has(${BUTTON}[aria-expanded="false"]) ${LIST} {
-        display: block;
-        block-size: 0;
-        opacity: 0;
-        visibility: hidden;
-        interactivity: inert;
-        pointer-events: none;
-      }
+    ${BROWSING}:has(${BUTTON}[aria-expanded="false"]) ${LIST}[${LIST_CLOSING}] {
+      display: block;
+      interactivity: inert;
+      pointer-events: none;
     }
     ${BROWSING} ${BUTTON} {
       display: grid;
@@ -112,18 +102,17 @@ const STYLE = `
   ${BUTTON}:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
   ${BUTTON} > svg {
     transform: rotate(0deg);
-    transition: transform 160ms ease-in-out;
+    transition: transform ${LIST_MOTION_MS}ms var(--ds-ease-in-out, ease-in-out);
   }
   ${BUTTON}[data-mode="all"] > svg { transform: rotate(90deg); }
   ${BUTTON}[data-mode="attention"] > svg { transform: rotate(45deg); }
   @media (prefers-reduced-motion: reduce) {
-    ${BUTTON} > svg,
-    ${BROWSING}:has(${BUTTON}) ${LIST} { transition: none; }
+    ${BUTTON} > svg { transition: none; }
   }
 `
 
 const nextMode = { all: 'collapsed', collapsed: 'attention', attention: 'all' } as const
-type Mode = keyof typeof nextMode
+export type Mode = keyof typeof nextMode
 const nextLabel = { all: 'hide', collapsed: 'attention', attention: 'show' } as const
 
 interface AttentionProps {
@@ -273,6 +262,7 @@ export function apply(ctx: Context): void {
     name: 'sidebar.footer.action', id: NS, locale: NS,
   }, function ListToggle({ t, wide, usePanelInfo, useSessions, useSessionStatus, useWorkspaces }) {
     const [mode, setMode] = useState(listMode)
+    const prepareMotion = useListMotion(mode, wide, `${BROWSING} ${LIST}`, SCROLLPORT)
     if (!wide) return null
     const label = t(nextLabel[mode])
     return <>
@@ -285,8 +275,10 @@ export function apply(ctx: Context): void {
         aria-label={label}
         title={label}
         onClick={() => {
-          listMode = nextMode[mode]
-          setMode(listMode)
+          const next = nextMode[mode]
+          prepareMotion(next)
+          listMode = next
+          setMode(next)
         }}
       >
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"
