@@ -10,7 +10,7 @@ import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-sess
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { sessionVisibility } from './attention.js'
 import { connectDrafts } from './drafts.js'
-import { IdleControl } from './idle-control.js'
+import { IdleControls, useArchivedOnly } from './idle-control.js'
 
 const NS = 'dsh-workspace-list-toggle'
 // DSH IconQueueOutlineRegular artwork. See THIRD-PARTY-NOTICES.txt.
@@ -55,6 +55,7 @@ const LIST = `${SCROLLPORT} [data-sidebar-list-area]`
 const SESSION_ROW = '[data-row-key^="session:"]'
 const LIST_END = '[data-dsh-workspace-list-end]'
 const IDLE_BUTTON = '[data-dsh-workspace-idle-toggle]'
+const IDLE_GROUP = '[data-dsh-workspace-idle-group]'
 const ATTENTION_EMPTY = '[data-dsh-workspace-attention-empty]'
 const BROWSING = `body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"]))`
 const STYLE = `
@@ -133,8 +134,7 @@ interface AttentionProps {
 }
 
 function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorkspaces, t, draftSource }: AttentionProps) {
-  const [shown, setShown] = useState<string[] | null>(null)
-  const showIdle = shown !== null
+  const [shown, setShown] = useState<ReadonlyMap<string | null, readonly string[]>>(() => new Map())
   const list = useSessions((value: SessionListState) => value)
   const statuses = useSessionStatus((value: SessionStatusSnapshot) => value)
   const workspace: WorkspaceSnapshot = useWorkspaces((value: WorkspaceSnapshot) => value)
@@ -145,30 +145,38 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
     ? undefined
     : Object.values<SessionSummary>(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
   const { attention, idle } = sessionVisibility(list, statuses, workspace, { current, drafts })
-  const idleIds = new Set(idle)
-  const selected = new Set(shown)
-  const ids = [...attention, ...idle.filter(id => selected.has(id))]
-  const pending = new Set(ids)
+  const idleIds = new Set<string>(idle)
+  const archivedOnly = useArchivedOnly(workspace.archivedSessionIds.length > 0)
+  const pending = new Set(attention)
   const looseIdle = new Set(idle)
-  const activeSessionsByGroup = new Map<string, typeof ids>()
-  const idleGroups = new Map<string, readonly string[]>()
+  const activeSessionsByGroup = new Map<string, string[]>()
+  const idleGroups = new Map<string, ReadonlySet<string>>()
   for (const item of workspace.items) {
     const groupIdle = item.sessionIds.filter(id => looseIdle.delete(id))
-    if (groupIdle.length > 0) idleGroups.set(item.workspaceId, groupIdle)
+    if (groupIdle.length > 0) idleGroups.set(item.workspaceId, new Set(groupIdle))
     const active = item.sessionIds.filter(id => pending.delete(id))
     if (active.length > 0) activeSessionsByGroup.set(item.workspaceId, active)
   }
   if (pending.size > 0) activeSessionsByGroup.set('', [...pending]) // Native Ungrouped key.
-  if (looseIdle.size > 0) idleGroups.set('', [...looseIdle])
+  if (looseIdle.size > 0) idleGroups.set('', looseIdle)
   const keptGroups = new Set(activeSessionsByGroup.keys())
-  // Keep idle workspace headings available so folded groups can still be opened by hand.
-  if (showIdle) for (const key of idleGroups.keys()) keptGroups.add(key)
+  const groupedIds: string[] = [...attention]
+  // A heading is the entry point to its idle sessions even before the first page.
+  for (const [key, candidates] of archivedOnly ? [] : idleGroups) {
+    keptGroups.add(key)
+    groupedIds.push(...(shown.get(key) ?? []).filter(id => candidates.has(id)))
+  }
+  const flatIds = [...attention, ...(archivedOnly ? [] : shown.get(null) ?? []).filter(id => idleIds.has(id))]
   const activeWorkspaces = workspace.items.filter(item => keptGroups.has(item.workspaceId))
   const row = (key: string) => `[data-row-key="${CSS.escape(key)}"]`
   const groupRows = [...keptGroups].map(key => row(`workspace:${key}`))
-  const sessionRows = ids.map(id => row(`session:${id}`))
-  const keep = [...sessionRows, ...groupRows].join(', ') || ':not(*)'
+  const groupedRows = groupedIds.map(id => row(`session:${id}`))
+  const flatRows = flatIds.map(id => row(`session:${id}`))
+  const keep = [...groupedRows, ...groupRows].join(', ') || ':not(*)'
   const scope = `${BROWSING}:has(${BUTTON}[data-mode="attention"]) ${LIST}`
+  const nativeWorkspaceRow = '[data-row-key^="workspace:"]:not([aria-hidden="true"] *)'
+  const grouped = `${scope}:has(${nativeWorkspaceRow})`
+  const flat = `${scope}:not(:has(${nativeWorkspaceRow}))`
   // Native child headings disappear under folded ancestors. A filesystem ancestor
   // is only a fallback when the matching child heading is absent from the list.
   const ancestorSelectors = (path: string) => workspace.items.filter(candidate => candidate.path !== path && (
@@ -181,7 +189,8 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
     return [{ anchor: row(`workspace:${item.workspaceId}`), ancestors }]
   })
   const ancestorRows = hiddenDescendants.flatMap(item => item.ancestors)
-  const emptyList = `${scope}:not(:has(${[...sessionRows, ...groupRows, ...ancestorRows].join(', ') || ':not(*)'}))`
+  const empty = (layout: string, rows: readonly string[]) =>
+    `${layout}:not(:has(${rows.join(', ') || ':not(*)'})) ${ATTENTION_EMPTY}`
   const overflowRules = [...activeSessionsByGroup].map(([key, active]) => {
     const allRendered = active.map(id => `:has(${row(`session:${id}`)})`).join('')
     const overflow = row(`overflow:${key}`)
@@ -189,15 +198,12 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
   }).join('')
   const activeOverflow = [...activeSessionsByGroup.keys()].map(key => row(`overflow:${key}`)).join(', ') || ':not(*)'
   const group = 'div:has(> [data-row-key^="workspace:"], > span > [data-row-key^="workspace:"])'
-  const idleRows = [
-    ...idle.map(id => row(`session:${id}`)),
-    ...[...idleGroups.keys()].map(id => row(`workspace:${id}`)),
-    ...workspace.items.filter(item => idleGroups.has(item.workspaceId)).flatMap(item => ancestorSelectors(item.path)),
-  ].join(', ')
-  const idleScope = `${scope}:has(${idleRows || ':not(*)'}):has(> ${LIST_END} > ${IDLE_BUTTON})`
+  const idleRows = idle.map(id => row(`session:${id}`)).join(', ') || ':not(*)'
+  const flatIdle = `${flat}:has(${idleRows}):has(> ${LIST_END} > ${IDLE_BUTTON})`
   return <>
     <style>{`
-      ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(', ') || ':not(*)'})),
+      ${grouped} ${SESSION_ROW}:not(:is(${groupedRows.join(', ') || ':not(*)'})),
+      ${flat} ${SESSION_ROW}:not(:is(${flatRows.join(', ') || ':not(*)'})),
       ${scope} ${group}:not(:has(${keep})),
       ${scope} [data-row-key="empty"] { display: none; }
       ${scope} [data-row-key^="overflow:"]:not(:is(${activeOverflow})) { display: none; }
@@ -207,14 +213,16 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
           display: block;
         }
       `).join('')}
-      ${LIST_END}, ${IDLE_BUTTON}, ${ATTENTION_EMPTY} { display: none; }
+      ${LIST_END}, ${IDLE_GROUP}, ${IDLE_BUTTON}, ${ATTENTION_EMPTY} { display: none; }
       ${scope} > ${LIST_END} { display: block; }
-      /* The native tree clears the bottom fade with 16px after its last row.
-         When the idle button is present, put that clearance after the button. */
-      ${idleScope} [role="tree"] { padding-bottom: 0; }
-      ${idleScope} > ${LIST_END} { padding-bottom: 16px; }
-      ${idleScope} ${IDLE_BUTTON} { display: block; }
-      ${emptyList} ${ATTENTION_EMPTY} {
+      /* The flat control sits outside the native tree, so move its fade clearance. */
+      ${flatIdle} [role="tree"] { padding-bottom: 0; }
+      ${flatIdle} > ${LIST_END} { padding-bottom: 16px; }
+      ${flatIdle} > ${LIST_END} > ${IDLE_BUTTON},
+      ${grouped} ${IDLE_GROUP}:has(> ${IDLE_BUTTON}),
+      ${grouped} ${IDLE_GROUP} > ${IDLE_BUTTON} { display: block; }
+      ${empty(grouped, [...groupedRows, ...groupRows, ...ancestorRows])},
+      ${empty(flat, flatRows)} {
         display: block;
         padding-inline: 12px;
         color: var(--dsw-alias-label-tertiary);
@@ -231,11 +239,11 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
         background-color: var(--dsw-alias-label-caption);
         mask: url("${EMPTY_ICON}") center / contain no-repeat;
       }
-      /* WorkspaceBrowser.module.css .sessionOverflowButton (DSH ui-workspace 0.2.2-rc.5), at root depth. */
+      /* WorkspaceBrowser.module.css .sessionOverflowButton (DSH ui-workspace 0.2.2-rc.5). */
       ${IDLE_BUTTON} {
         width: 100%;
         height: 28px;
-        padding: 0 var(--dsh-sidebar-row-padding) 0 calc(var(--dsh-sidebar-row-padding) + 16px + var(--dsh-sidebar-label-gap));
+        padding: 0 var(--dsh-sidebar-row-padding) 0 calc(var(--dsh-sidebar-row-padding) + 16px + var(--dsh-sidebar-label-gap) + var(--dsh-workspace-indent, 0px));
         border: none;
         border-radius: var(--dsw-radius-sm);
         background: transparent;
@@ -251,19 +259,24 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
         }
       }
     `}</style>
-    <IdleControl
+    <IdleControls
       listSelector={LIST}
       scrollportSelector={SCROLLPORT}
       browsingSelector={`${BROWSING} ${LIST}`}
       idle={idleIds}
       idleGroups={idleGroups}
       shown={shown}
-      onChange={setShown}
+      onChange={(key, selection) => setShown(previous => {
+        const next = new Map(previous)
+        if (selection === null) next.delete(key)
+        else next.set(key, selection)
+        return next
+      })}
       moreLabel={t('expandIdle')}
       collapseLabel={t('collapseIdle')}
       loadingLabel={t('loading')}
       emptyLabel={t(list.phase === 'pending' ? 'loading' : 'empty')}
-      hasArchives={workspace.archivedSessionIds.length > 0}
+      archivedOnly={archivedOnly}
     />
   </>
 }

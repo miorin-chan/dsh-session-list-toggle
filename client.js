@@ -102,20 +102,19 @@ var import_react_dom = require("react-dom");
 var IDLE_PAGE_SIZE = 5;
 var SESSION = "session:";
 var OVERFLOW = "overflow:";
-var PAGE_ROWS = `[data-row-key^="${SESSION}"], button[data-row-key^="${OVERFLOW}"][aria-expanded="false"]`;
-function scanIdlePage(list, idle, idleGroups, shown, remaining) {
-  const rows = [...list.querySelectorAll(PAGE_ROWS)].filter((row) => !row.closest('[aria-hidden="true"]'));
+var SESSION_ROW = `[data-row-key^="${SESSION}"]`;
+var OVERFLOW_ROW = `button[data-row-key^="${OVERFLOW}"][aria-expanded="false"]`;
+var OWN_SESSIONS = `:scope > ${SESSION_ROW}, :scope > :not([role="group"]) > ${SESSION_ROW}`;
+var GROUP_PAGE_ROWS = `${OWN_SESSIONS}, :scope > ${OVERFLOW_ROW}`;
+function scanIdlePage(section, idle, groupKey, shown, remaining) {
+  const rows = [...section.querySelectorAll(groupKey === null ? SESSION_ROW : GROUP_PAGE_ROWS)].filter((row) => !row.closest('[aria-hidden="true"]'));
   const mounted = new Set(rows.map((row) => row.dataset.rowKey));
   const selected = new Set(shown);
-  const boundaries = /* @__PURE__ */ new Set();
-  for (const row of rows) {
-    if (!(row instanceof HTMLButtonElement)) continue;
-    const group = row.dataset.rowKey?.slice(OVERFLOW.length) ?? "";
-    const missing = idleGroups.get(group)?.filter((id) => !mounted.has(SESSION + id)) ?? [];
-    if (missing.length === 0) continue;
-    for (const id of missing) selected.delete(id);
-    boundaries.add(row);
-  }
+  const nativeOverflow = groupKey === null ? void 0 : rows.find(
+    (row) => row instanceof HTMLButtonElement && row.dataset.rowKey === OVERFLOW + groupKey
+  );
+  const missing = nativeOverflow === void 0 ? [] : [...idle].filter((id) => !mounted.has(SESSION + id));
+  for (const id of missing) selected.delete(id);
   const added = [];
   let boundary;
   for (const row of rows) {
@@ -126,8 +125,8 @@ function scanIdlePage(list, idle, idleGroups, shown, remaining) {
       if (added.length === remaining) return { shown: [...selected], added, hasMore: true, boundary };
       selected.add(id);
       added.push(id);
-    } else if (row instanceof HTMLButtonElement && boundaries.has(row)) {
-      if (added.length < remaining) boundary = row;
+    } else if (row === nativeOverflow && missing.length > 0) {
+      if (added.length < remaining) boundary = nativeOverflow;
       return { shown: [...selected], added, hasMore: true, boundary };
     }
   }
@@ -140,8 +139,7 @@ function loadNativePage(button, signal) {
       resolve(false);
       return;
     }
-    const groupRows = `:scope > [data-row-key^="${SESSION}"], :scope > :not([role="group"]) > [data-row-key^="${SESSION}"]`;
-    const countRows = () => parent.querySelectorAll(groupRows).length;
+    const countRows = () => parent.querySelectorAll(OWN_SESSIONS).length;
     const before = countRows();
     let continuation = 0;
     const finish = (changed) => {
@@ -167,6 +165,88 @@ function loadNativePage(button, signal) {
 // src/client/idle-control.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
 var workspaceViewKey = "dsh.workspace.view.v5";
+var WORKSPACE = "workspace:";
+var WORKSPACE_ROW = `[data-row-key^="${WORKSPACE}"]`;
+var EMPTY_SELECTION = [];
+function useArchivedOnly(watchArchiveFilter) {
+  const [archivedOnly, setArchivedOnly] = (0, import_react.useState)(isArchivedOnly);
+  (0, import_react.useEffect)(() => {
+    if (!watchArchiveFilter) return;
+    const sync = () => setArchivedOnly(isArchivedOnly());
+    sync();
+    const timer = window.setInterval(sync, 250);
+    return () => window.clearInterval(timer);
+  }, [watchArchiveFilter]);
+  return watchArchiveFilter && archivedOnly;
+}
+function IdleControls({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, loadingLabel, emptyLabel, archivedOnly }) {
+  const [mount, setMount] = (0, import_react.useState)(null);
+  (0, import_react.useLayoutEffect)(() => {
+    const scrollport = document.querySelector(scrollportSelector);
+    if (scrollport === null) return;
+    const end = document.createElement("div");
+    end.dataset.dshWorkspaceListEnd = "";
+    let current = null;
+    let scopes = [];
+    const sync = () => {
+      const list = current?.isConnected ? current : scrollport.querySelector(listSelector);
+      if (list !== null && list.lastElementChild !== end) list.append(end);
+      const tree = list?.matches(browsingSelector) ? list.querySelector('[role="tree"]') : null;
+      const headers = [...tree?.querySelectorAll(WORKSPACE_ROW) ?? []].filter((row) => !row.closest('[aria-hidden="true"]'));
+      const previous = new Map(scopes.map((scope) => [scope.row, scope]));
+      const next = [];
+      if (tree !== null && headers.length === 0) {
+        next.push(previous.get(tree) ?? { key: null, row: tree, section: tree, container: end });
+      }
+      for (const row of headers) {
+        const key = row.dataset.rowKey?.slice(WORKSPACE.length);
+        if (key === void 0 || row.getAttribute("aria-expanded") !== "true") continue;
+        const section = row.parentElement?.matches("span") ? row.parentElement.parentElement : row.parentElement;
+        if (section == null) continue;
+        const old = previous.get(row);
+        const scope = old?.section === section ? old : { key, row, section, container: document.createElement("div") };
+        scope.container.dataset.dshWorkspaceIdleGroup = "";
+        if (section.lastElementChild !== scope.container) {
+          const focused = document.activeElement;
+          section.append(scope.container);
+          if (focused instanceof HTMLElement && scope.container.contains(focused)) focused.focus({ preventScroll: true });
+        }
+        next.push(scope);
+      }
+      if (list === current && scopes.length === next.length && scopes.every((scope, index) => scope === next[index])) return;
+      const retained = new Set(next);
+      for (const scope of scopes) if (scope.container !== end && !retained.has(scope)) scope.container.remove();
+      current = list;
+      scopes = next;
+      setMount(list === null ? null : { list, end, scopes });
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(scrollport, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-expanded", "aria-hidden", "tabindex"] });
+    return () => {
+      observer.disconnect();
+      for (const scope of scopes) scope.container.remove();
+      end.remove();
+    };
+  }, [listSelector, scrollportSelector, browsingSelector]);
+  if (mount === null) return null;
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+    (0, import_react_dom.createPortal)(/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "data-dsh-workspace-attention-empty": "", children: emptyLabel }), mount.end),
+    !archivedOnly && mount.scopes.map((scope) => {
+      const candidates = scope.key === null ? idle : idleGroups.get(scope.key);
+      if (candidates === void 0 || candidates.size === 0) return null;
+      return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        IdlePageControl,
+        {
+          ...{ scope, list: mount.list, scrollportSelector, browsingSelector, moreLabel, collapseLabel, loadingLabel, onChange },
+          idle: candidates,
+          shown: shown.get(scope.key) ?? null
+        },
+        JSON.stringify(scope.key)
+      );
+    })
+  ] });
+}
 function isArchivedOnly() {
   try {
     const view = JSON.parse(window.localStorage.getItem(workspaceViewKey) ?? "null");
@@ -182,66 +262,32 @@ function addedRows(list, ids) {
     (row) => !row.closest('[aria-hidden="true"]') && row.getClientRects().length > 0
   );
 }
-function IdleControl({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, loadingLabel, emptyLabel, hasArchives }) {
-  const [mount, setMount] = (0, import_react.useState)(null);
-  const [archivedOnly, setArchivedOnly] = (0, import_react.useState)(false);
-  const [hasMore, setHasMore] = (0, import_react.useState)(false);
+function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, idle, shown, onChange, moreLabel, collapseLabel, loadingLabel }) {
+  const { key, row, section, container } = scope;
+  const [hasMore, setHasMore] = (0, import_react.useState)(true);
   const [busy, setBusy] = (0, import_react.useState)(false);
   const request = (0, import_react.useRef)(null);
-  const latestPageData = (0, import_react.useRef)({ idle, idleGroups });
+  const latestIdle = (0, import_react.useRef)(idle);
   const reveal = (0, import_react.useRef)(null);
   const button = (0, import_react.useRef)(null);
   const activationKeyHeld = (0, import_react.useRef)(false);
-  const list = mount?.list ?? null;
-  const watchArchiveFilter = hasArchives && idle.size > 0;
   const canCollapse = shown !== null && !hasMore;
   (0, import_react.useLayoutEffect)(() => {
-    latestPageData.current = { idle, idleGroups };
-  }, [idle, idleGroups]);
-  (0, import_react.useLayoutEffect)(() => () => request.current?.abort(), [list, archivedOnly]);
+    latestIdle.current = idle;
+  }, [idle]);
+  (0, import_react.useLayoutEffect)(() => () => request.current?.abort(), [scope, list]);
   (0, import_react.useEffect)(() => {
-    if (list === null || busy || shown === null) return;
+    if (busy || shown === null) return;
     const sync = () => {
-      if (request.current === null) setHasMore(scanIdlePage(list, idle, idleGroups, shown, 0).hasMore);
+      if (request.current === null) setHasMore(scanIdlePage(section, idle, key, shown, 0).hasMore);
     };
     sync();
     const observer = new MutationObserver(sync);
-    observer.observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-expanded", "aria-hidden"] });
+    observer.observe(section, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-expanded", "aria-hidden"] });
     return () => observer.disconnect();
-  }, [list, idle, idleGroups, shown, busy]);
+  }, [section, idle, key, shown, busy]);
   (0, import_react.useEffect)(() => {
-    if (!watchArchiveFilter) return;
-    const sync = () => setArchivedOnly(isArchivedOnly());
-    sync();
-    const timer = window.setInterval(sync, 250);
-    return () => window.clearInterval(timer);
-  }, [watchArchiveFilter]);
-  (0, import_react.useLayoutEffect)(() => {
-    const scrollport = document.querySelector(scrollportSelector);
-    if (scrollport === null) return;
-    const container = document.createElement("div");
-    container.dataset.dshWorkspaceListEnd = "";
-    let current = null;
-    const syncMount = () => {
-      const next = current?.isConnected ? current : document.querySelector(listSelector);
-      if (next !== null && next.lastElementChild !== container) next.append(container);
-      if (next === current) return;
-      current = next;
-      setMount(next === null ? null : { list: next, container });
-    };
-    syncMount();
-    const observer = new MutationObserver(() => {
-      syncMount();
-      if (request.current !== null && !current?.matches(browsingSelector)) request.current.abort();
-    });
-    observer.observe(scrollport, { childList: true, subtree: true, attributes: true, attributeFilter: ["tabindex"] });
-    return () => {
-      observer.disconnect();
-      container.remove();
-    };
-  }, [listSelector, scrollportSelector, browsingSelector]);
-  (0, import_react.useEffect)(() => {
-    if (shown === null || list === null || busy || reveal.current === null) return;
+    if (shown === null || busy || reveal.current === null) return;
     let frame = requestAnimationFrame(function positionPage() {
       const page = reveal.current;
       if (page?.keyboard && activationKeyHeld.current) {
@@ -253,15 +299,15 @@ function IdleControl({ listSelector, scrollportSelector, browsingSelector, idle,
       if (page === null || trigger === null || trigger.getClientRects().length === 0) return;
       const keepFocus = page.keyboard && document.activeElement === trigger;
       if (page.keyboard && !keepFocus) return;
-      const added = addedRows(list, page.ids);
+      const added = addedRows(section, page.ids);
       const first = added[0];
       if (first === void 0) return;
       const bounds = list.getBoundingClientRect();
       const outer = list.closest(scrollportSelector)?.getBoundingClientRect();
       const top = Math.max(bounds.top, outer?.top ?? 0, 0);
       const bottom = Math.min(bounds.bottom, outer?.bottom ?? window.innerHeight, window.innerHeight);
-      const isVisible = (row) => {
-        const rect = row.getBoundingClientRect();
+      const isVisible = (row2) => {
+        const rect = row2.getBoundingClientRect();
         return rect.bottom > top && rect.top < bottom;
       };
       const visible = added.find(isVisible);
@@ -271,26 +317,24 @@ function IdleControl({ listSelector, scrollportSelector, browsingSelector, idle,
       if (keepFocus) target.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [shown, list, scrollportSelector, busy]);
-  if (mount === null || list === null) return null;
+  }, [shown, list, section, scrollportSelector, busy]);
   const showNextPage = async (keyboard) => {
     if (request.current !== null) return;
     if (canCollapse) {
       reveal.current = null;
-      onChange(null);
+      onChange(key, null);
       return;
     }
-    const tree = list.querySelector('[role="tree"]');
-    const browsing = () => list.isConnected && list.matches(browsingSelector) && list.querySelector('[role="tree"]') === tree;
+    const browsing = () => list.contains(row) && list.matches(browsingSelector) && !row.closest('[aria-hidden="true"]') && (key === null || row.getAttribute("aria-expanded") === "true");
     if (!browsing()) return;
     const ids = [];
     let committed = shown;
-    let page = scanIdlePage(list, idle, idleGroups, committed ?? [], IDLE_PAGE_SIZE);
+    let page = scanIdlePage(section, idle, key, committed ?? EMPTY_SELECTION, IDLE_PAGE_SIZE);
     const applyPage = () => {
       const changed = page.added.length > 0 || page.shown.length !== (committed?.length ?? 0);
       if (changed || committed === null && page.boundary === void 0) {
         committed = page.shown;
-        onChange(page.shown);
+        onChange(key, page.shown);
       }
       ids.push(...page.added);
       setHasMore(page.hasMore);
@@ -310,8 +354,7 @@ function IdleControl({ listSelector, scrollportSelector, browsingSelector, idle,
         const advanced = await loadNativePage(page.boundary, controller.signal);
         if (controller.signal.aborted || !browsing()) return;
         if (!advanced) break;
-        const current = latestPageData.current;
-        page = scanIdlePage(list, current.idle, current.idleGroups, page.shown, IDLE_PAGE_SIZE - ids.length);
+        page = scanIdlePage(section, latestIdle.current, key, page.shown, IDLE_PAGE_SIZE - ids.length);
         applyPage();
       }
       reveal.current = { ids, keyboard };
@@ -320,34 +363,34 @@ function IdleControl({ listSelector, scrollportSelector, browsingSelector, idle,
       setBusy(false);
     }
   };
-  return (0, import_react_dom.createPortal)(/* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "data-dsh-workspace-attention-empty": "", children: emptyLabel }),
-    idle.size > 0 && !(watchArchiveFilter && archivedOnly) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      "button",
-      {
-        ref: button,
-        type: "button",
-        "data-dsh-workspace-idle-toggle": "",
-        "aria-expanded": shown !== null,
-        "aria-disabled": busy || void 0,
-        onClick: (event) => {
-          void showNextPage(event.detail === 0);
-        },
-        onKeyDown: (event) => {
-          if (event.key !== "Enter" && event.key !== " ") return;
-          activationKeyHeld.current = true;
-          if (event.repeat) event.preventDefault();
-        },
-        onKeyUp: (event) => {
-          if (event.key === "Enter" || event.key === " ") activationKeyHeld.current = false;
-        },
-        onBlur: () => {
-          activationKeyHeld.current = false;
-        },
-        children: busy ? loadingLabel : canCollapse ? collapseLabel : moreLabel
-      }
-    )
-  ] }), mount.container);
+  const label = busy ? loadingLabel : canCollapse ? collapseLabel : moreLabel;
+  const workspaceName = key === null ? void 0 : row.children[2]?.textContent?.trim();
+  return (0, import_react_dom.createPortal)(/* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    "button",
+    {
+      ref: button,
+      type: "button",
+      "data-dsh-workspace-idle-toggle": "",
+      "aria-label": workspaceName ? `${label} \xB7 ${workspaceName}` : void 0,
+      "aria-expanded": shown !== null,
+      "aria-disabled": busy || void 0,
+      onClick: (event) => {
+        void showNextPage(event.detail === 0);
+      },
+      onKeyDown: (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        activationKeyHeld.current = true;
+        if (event.repeat) event.preventDefault();
+      },
+      onKeyUp: (event) => {
+        if (event.key === "Enter" || event.key === " ") activationKeyHeld.current = false;
+      },
+      onBlur: () => {
+        activationKeyHeld.current = false;
+      },
+      children: label
+    }
+  ), container);
 }
 
 // src/client/index.tsx
@@ -437,9 +480,10 @@ var HEADER = `${SCROLLPORT} [data-sidebar-workspace-header]`;
 var TITLE = `${HEADER} > span:first-child`;
 var BUTTON = "[data-dsh-workspace-list-toggle]";
 var LIST = `${SCROLLPORT} [data-sidebar-list-area]`;
-var SESSION_ROW = '[data-row-key^="session:"]';
+var SESSION_ROW2 = '[data-row-key^="session:"]';
 var LIST_END = "[data-dsh-workspace-list-end]";
 var IDLE_BUTTON = "[data-dsh-workspace-idle-toggle]";
+var IDLE_GROUP = "[data-dsh-workspace-idle-group]";
 var ATTENTION_EMPTY = "[data-dsh-workspace-attention-empty]";
 var BROWSING = `body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"]))`;
 var STYLE = `
@@ -506,8 +550,7 @@ var STYLE = `
 var nextMode = { all: "collapsed", collapsed: "attention", attention: "all" };
 var nextLabel = { all: "hide", collapsed: "attention", attention: "show" };
 function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorkspaces, t, draftSource }) {
-  const [shown, setShown] = (0, import_react2.useState)(null);
-  const showIdle = shown !== null;
+  const [shown, setShown] = (0, import_react2.useState)(() => /* @__PURE__ */ new Map());
   const list = useSessions((value) => value);
   const statuses = useSessionStatus((value) => value);
   const workspace = useWorkspaces((value) => value);
@@ -516,28 +559,36 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
   const current = panelActive ? void 0 : Object.values(list.byId).find((session) => (session.retainedBy.mainView ?? 0) > 0)?.id;
   const { attention, idle } = sessionVisibility(list, statuses, workspace, { current, drafts });
   const idleIds = new Set(idle);
-  const selected = new Set(shown);
-  const ids = [...attention, ...idle.filter((id) => selected.has(id))];
-  const pending = new Set(ids);
+  const archivedOnly = useArchivedOnly(workspace.archivedSessionIds.length > 0);
+  const pending = new Set(attention);
   const looseIdle = new Set(idle);
   const activeSessionsByGroup = /* @__PURE__ */ new Map();
   const idleGroups = /* @__PURE__ */ new Map();
   for (const item of workspace.items) {
     const groupIdle = item.sessionIds.filter((id) => looseIdle.delete(id));
-    if (groupIdle.length > 0) idleGroups.set(item.workspaceId, groupIdle);
+    if (groupIdle.length > 0) idleGroups.set(item.workspaceId, new Set(groupIdle));
     const active = item.sessionIds.filter((id) => pending.delete(id));
     if (active.length > 0) activeSessionsByGroup.set(item.workspaceId, active);
   }
   if (pending.size > 0) activeSessionsByGroup.set("", [...pending]);
-  if (looseIdle.size > 0) idleGroups.set("", [...looseIdle]);
+  if (looseIdle.size > 0) idleGroups.set("", looseIdle);
   const keptGroups = new Set(activeSessionsByGroup.keys());
-  if (showIdle) for (const key of idleGroups.keys()) keptGroups.add(key);
+  const groupedIds = [...attention];
+  for (const [key, candidates] of archivedOnly ? [] : idleGroups) {
+    keptGroups.add(key);
+    groupedIds.push(...(shown.get(key) ?? []).filter((id) => candidates.has(id)));
+  }
+  const flatIds = [...attention, ...(archivedOnly ? [] : shown.get(null) ?? []).filter((id) => idleIds.has(id))];
   const activeWorkspaces = workspace.items.filter((item) => keptGroups.has(item.workspaceId));
   const row = (key) => `[data-row-key="${CSS.escape(key)}"]`;
   const groupRows = [...keptGroups].map((key) => row(`workspace:${key}`));
-  const sessionRows = ids.map((id) => row(`session:${id}`));
-  const keep = [...sessionRows, ...groupRows].join(", ") || ":not(*)";
+  const groupedRows = groupedIds.map((id) => row(`session:${id}`));
+  const flatRows = flatIds.map((id) => row(`session:${id}`));
+  const keep = [...groupedRows, ...groupRows].join(", ") || ":not(*)";
   const scope = `${BROWSING}:has(${BUTTON}[data-mode="attention"]) ${LIST}`;
+  const nativeWorkspaceRow = '[data-row-key^="workspace:"]:not([aria-hidden="true"] *)';
+  const grouped = `${scope}:has(${nativeWorkspaceRow})`;
+  const flat = `${scope}:not(:has(${nativeWorkspaceRow}))`;
   const ancestorSelectors = (path) => workspace.items.filter((candidate) => candidate.path !== path && (path.startsWith(candidate.path.replace(/\/+$/, "") + "/") || path.startsWith(candidate.path.replace(/\\+$/, "") + "\\"))).map((candidate) => row(`workspace:${candidate.workspaceId}`));
   const hiddenDescendants = activeWorkspaces.flatMap((item) => {
     const ancestors = ancestorSelectors(item.path);
@@ -545,7 +596,7 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
     return [{ anchor: row(`workspace:${item.workspaceId}`), ancestors }];
   });
   const ancestorRows = hiddenDescendants.flatMap((item) => item.ancestors);
-  const emptyList = `${scope}:not(:has(${[...sessionRows, ...groupRows, ...ancestorRows].join(", ") || ":not(*)"}))`;
+  const empty2 = (layout, rows) => `${layout}:not(:has(${rows.join(", ") || ":not(*)"})) ${ATTENTION_EMPTY}`;
   const overflowRules = [...activeSessionsByGroup].map(([key, active]) => {
     const allRendered = active.map((id) => `:has(${row(`session:${id}`)})`).join("");
     const overflow = row(`overflow:${key}`);
@@ -553,15 +604,12 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
   }).join("");
   const activeOverflow = [...activeSessionsByGroup.keys()].map((key) => row(`overflow:${key}`)).join(", ") || ":not(*)";
   const group = 'div:has(> [data-row-key^="workspace:"], > span > [data-row-key^="workspace:"])';
-  const idleRows = [
-    ...idle.map((id) => row(`session:${id}`)),
-    ...[...idleGroups.keys()].map((id) => row(`workspace:${id}`)),
-    ...workspace.items.filter((item) => idleGroups.has(item.workspaceId)).flatMap((item) => ancestorSelectors(item.path))
-  ].join(", ");
-  const idleScope = `${scope}:has(${idleRows || ":not(*)"}):has(> ${LIST_END} > ${IDLE_BUTTON})`;
+  const idleRows = idle.map((id) => row(`session:${id}`)).join(", ") || ":not(*)";
+  const flatIdle = `${flat}:has(${idleRows}):has(> ${LIST_END} > ${IDLE_BUTTON})`;
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("style", { children: `
-      ${scope} ${SESSION_ROW}:not(:is(${sessionRows.join(", ") || ":not(*)"})),
+      ${grouped} ${SESSION_ROW2}:not(:is(${groupedRows.join(", ") || ":not(*)"})),
+      ${flat} ${SESSION_ROW2}:not(:is(${flatRows.join(", ") || ":not(*)"})),
       ${scope} ${group}:not(:has(${keep})),
       ${scope} [data-row-key="empty"] { display: none; }
       ${scope} [data-row-key^="overflow:"]:not(:is(${activeOverflow})) { display: none; }
@@ -571,14 +619,16 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
           display: block;
         }
       `).join("")}
-      ${LIST_END}, ${IDLE_BUTTON}, ${ATTENTION_EMPTY} { display: none; }
+      ${LIST_END}, ${IDLE_GROUP}, ${IDLE_BUTTON}, ${ATTENTION_EMPTY} { display: none; }
       ${scope} > ${LIST_END} { display: block; }
-      /* The native tree clears the bottom fade with 16px after its last row.
-         When the idle button is present, put that clearance after the button. */
-      ${idleScope} [role="tree"] { padding-bottom: 0; }
-      ${idleScope} > ${LIST_END} { padding-bottom: 16px; }
-      ${idleScope} ${IDLE_BUTTON} { display: block; }
-      ${emptyList} ${ATTENTION_EMPTY} {
+      /* The flat control sits outside the native tree, so move its fade clearance. */
+      ${flatIdle} [role="tree"] { padding-bottom: 0; }
+      ${flatIdle} > ${LIST_END} { padding-bottom: 16px; }
+      ${flatIdle} > ${LIST_END} > ${IDLE_BUTTON},
+      ${grouped} ${IDLE_GROUP}:has(> ${IDLE_BUTTON}),
+      ${grouped} ${IDLE_GROUP} > ${IDLE_BUTTON} { display: block; }
+      ${empty2(grouped, [...groupedRows, ...groupRows, ...ancestorRows])},
+      ${empty2(flat, flatRows)} {
         display: block;
         padding-inline: 12px;
         color: var(--dsw-alias-label-tertiary);
@@ -595,11 +645,11 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
         background-color: var(--dsw-alias-label-caption);
         mask: url("${EMPTY_ICON}") center / contain no-repeat;
       }
-      /* WorkspaceBrowser.module.css .sessionOverflowButton (DSH ui-workspace 0.2.2-rc.5), at root depth. */
+      /* WorkspaceBrowser.module.css .sessionOverflowButton (DSH ui-workspace 0.2.2-rc.5). */
       ${IDLE_BUTTON} {
         width: 100%;
         height: 28px;
-        padding: 0 var(--dsh-sidebar-row-padding) 0 calc(var(--dsh-sidebar-row-padding) + 16px + var(--dsh-sidebar-label-gap));
+        padding: 0 var(--dsh-sidebar-row-padding) 0 calc(var(--dsh-sidebar-row-padding) + 16px + var(--dsh-sidebar-label-gap) + var(--dsh-workspace-indent, 0px));
         border: none;
         border-radius: var(--dsw-radius-sm);
         background: transparent;
@@ -616,7 +666,7 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
       }
     ` }),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-      IdleControl,
+      IdleControls,
       {
         listSelector: LIST,
         scrollportSelector: SCROLLPORT,
@@ -624,12 +674,17 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
         idle: idleIds,
         idleGroups,
         shown,
-        onChange: setShown,
+        onChange: (key, selection) => setShown((previous) => {
+          const next = new Map(previous);
+          if (selection === null) next.delete(key);
+          else next.set(key, selection);
+          return next;
+        }),
         moreLabel: t("expandIdle"),
         collapseLabel: t("collapseIdle"),
         loadingLabel: t("loading"),
         emptyLabel: t(list.phase === "pending" ? "loading" : "empty"),
-        hasArchives: workspace.archivedSessionIds.length > 0
+        archivedOnly
       }
     )
   ] });

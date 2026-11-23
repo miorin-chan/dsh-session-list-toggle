@@ -3,6 +3,107 @@ import { createPortal } from 'react-dom'
 import { IDLE_PAGE_SIZE, loadNativePage, scanIdlePage } from './idle-page.js'
 // ui-workspace 0.2.2-rc.5 stores this view preference locally and exposes no slot prop for it.
 const workspaceViewKey = 'dsh.workspace.view.v5'
+const WORKSPACE = 'workspace:'
+const WORKSPACE_ROW = `[data-row-key^="${WORKSPACE}"]`
+const EMPTY_SELECTION: readonly string[] = []
+
+type ScopeKey = string | null // null is the flat view; '' is the native Ungrouped key.
+type Scope = { key: ScopeKey; row: HTMLElement; section: HTMLElement; container: HTMLElement }
+
+interface IdleControlsProps {
+  listSelector: string
+  scrollportSelector: string
+  browsingSelector: string
+  idle: ReadonlySet<string>
+  idleGroups: ReadonlyMap<string, ReadonlySet<string>>
+  shown: ReadonlyMap<ScopeKey, readonly string[]>
+  onChange: (key: ScopeKey, shown: string[] | null) => void
+  moreLabel: string
+  collapseLabel: string
+  loadingLabel: string
+  emptyLabel: string
+  archivedOnly: boolean
+}
+
+export function useArchivedOnly(watchArchiveFilter: boolean) {
+  const [archivedOnly, setArchivedOnly] = useState(isArchivedOnly)
+  useEffect(() => {
+    if (!watchArchiveFilter) return
+    // Native view preferences can persist after the new rows render.
+    const sync = () => setArchivedOnly(isArchivedOnly())
+    sync()
+    const timer = window.setInterval(sync, 250)
+    return () => window.clearInterval(timer)
+  }, [watchArchiveFilter])
+  return watchArchiveFilter && archivedOnly
+}
+
+export function IdleControls({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, loadingLabel, emptyLabel, archivedOnly }: IdleControlsProps) {
+  const [mount, setMount] = useState<{ list: HTMLElement; end: HTMLElement; scopes: Scope[] } | null>(null)
+
+  useLayoutEffect(() => {
+    const scrollport = document.querySelector(scrollportSelector)
+    if (scrollport === null) return
+    const end = document.createElement('div')
+    end.dataset.dshWorkspaceListEnd = ''
+    let current: HTMLElement | null = null
+    let scopes: Scope[] = []
+    const sync = () => {
+      const list = current?.isConnected ? current : scrollport.querySelector<HTMLElement>(listSelector)
+      if (list !== null && list.lastElementChild !== end) list.append(end)
+      const tree = list?.matches(browsingSelector) ? list.querySelector<HTMLElement>('[role="tree"]') : null
+      const headers = [...(tree?.querySelectorAll<HTMLElement>(WORKSPACE_ROW) ?? [])]
+        .filter(row => !row.closest('[aria-hidden="true"]'))
+      const previous = new Map(scopes.map(scope => [scope.row, scope]))
+      const next: Scope[] = []
+      if (tree !== null && headers.length === 0) {
+        next.push(previous.get(tree) ?? { key: null, row: tree, section: tree, container: end })
+      }
+      for (const row of headers) {
+        const key = row.dataset.rowKey?.slice(WORKSPACE.length)
+        if (key === undefined || row.getAttribute('aria-expanded') !== 'true') continue
+        // The real workspace heading is wrapped by the native hover card.
+        const section = row.parentElement?.matches('span') ? row.parentElement.parentElement : row.parentElement
+        if (section == null) continue
+        const old = previous.get(row)
+        const scope = old?.section === section ? old : { key, row, section, container: document.createElement('div') }
+        scope.container.dataset.dshWorkspaceIdleGroup = ''
+        if (section.lastElementChild !== scope.container) {
+          const focused = document.activeElement
+          section.append(scope.container)
+          if (focused instanceof HTMLElement && scope.container.contains(focused)) focused.focus({ preventScroll: true })
+        }
+        next.push(scope)
+      }
+      if (list === current && scopes.length === next.length && scopes.every((scope, index) => scope === next[index])) return
+      const retained = new Set(next)
+      for (const scope of scopes) if (scope.container !== end && !retained.has(scope)) scope.container.remove()
+      current = list
+      scopes = next
+      setMount(list === null ? null : { list, end, scopes })
+    }
+    sync()
+    const observer = new MutationObserver(sync)
+    observer.observe(scrollport, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded', 'aria-hidden', 'tabindex'] })
+    return () => {
+      observer.disconnect()
+      for (const scope of scopes) scope.container.remove()
+      end.remove()
+    }
+  }, [listSelector, scrollportSelector, browsingSelector])
+
+  if (mount === null) return null
+  return <>
+    {createPortal(<div data-dsh-workspace-attention-empty="">{emptyLabel}</div>, mount.end)}
+    {!archivedOnly && mount.scopes.map(scope => {
+      const candidates = scope.key === null ? idle : idleGroups.get(scope.key)
+      if (candidates === undefined || candidates.size === 0) return null
+      return <IdlePageControl key={JSON.stringify(scope.key)}
+        {...{ scope, list: mount.list, scrollportSelector, browsingSelector, moreLabel, collapseLabel, loadingLabel, onChange }}
+        idle={candidates} shown={shown.get(scope.key) ?? null} />
+    })}
+  </>
+}
 
 function isArchivedOnly() {
   try {
@@ -21,87 +122,41 @@ function addedRows(list: HTMLElement, ids: readonly string[]) {
   )
 }
 
-export function IdleControl({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, loadingLabel, emptyLabel, hasArchives }: {
-  listSelector: string
-  scrollportSelector: string
-  browsingSelector: string
-  idle: ReadonlySet<string>
-  idleGroups: ReadonlyMap<string, readonly string[]>
+function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, idle, shown, onChange, moreLabel, collapseLabel, loadingLabel }: Pick<IdleControlsProps,
+  'scrollportSelector' | 'browsingSelector' | 'idle' | 'onChange' | 'moreLabel' | 'collapseLabel' | 'loadingLabel'> & {
+  scope: Scope
+  list: HTMLElement
   shown: readonly string[] | null
-  onChange: (shown: string[] | null) => void
-  moreLabel: string
-  collapseLabel: string
-  loadingLabel: string
-  emptyLabel: string
-  hasArchives: boolean
 }) {
-  const [mount, setMount] = useState<{ list: HTMLElement; container: HTMLElement } | null>(null)
-  const [archivedOnly, setArchivedOnly] = useState(false)
-  const [hasMore, setHasMore] = useState(false)
+  const { key, row, section, container } = scope
+  const [hasMore, setHasMore] = useState(true)
   const [busy, setBusy] = useState(false)
   const request = useRef<AbortController | null>(null)
-  const latestPageData = useRef({ idle, idleGroups })
+  const latestIdle = useRef(idle)
   const reveal = useRef<{ ids: string[]; keyboard: boolean } | null>(null)
   const button = useRef<HTMLButtonElement>(null)
   const activationKeyHeld = useRef(false)
-  const list = mount?.list ?? null
-  const watchArchiveFilter = hasArchives && idle.size > 0
   const canCollapse = shown !== null && !hasMore
 
   useLayoutEffect(() => {
-    latestPageData.current = { idle, idleGroups }
-  }, [idle, idleGroups])
+    latestIdle.current = idle
+  }, [idle])
 
-  useLayoutEffect(() => () => request.current?.abort(), [list, archivedOnly])
+  useLayoutEffect(() => () => request.current?.abort(), [scope, list])
 
   useEffect(() => {
-    if (list === null || busy || shown === null) return
+    if (busy || shown === null) return
     const sync = () => {
-      if (request.current === null) setHasMore(scanIdlePage(list, idle, idleGroups, shown, 0).hasMore)
+      if (request.current === null) setHasMore(scanIdlePage(section, idle, key, shown, 0).hasMore)
     }
     sync()
     const observer = new MutationObserver(sync)
-    observer.observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded', 'aria-hidden'] })
+    observer.observe(section, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded', 'aria-hidden'] })
     return () => observer.disconnect()
-  }, [list, idle, idleGroups, shown, busy])
+  }, [section, idle, key, shown, busy])
 
   useEffect(() => {
-    if (!watchArchiveFilter) return
-    // Native view preferences can persist after the new rows render.
-    const sync = () => setArchivedOnly(isArchivedOnly())
-    sync()
-    const timer = window.setInterval(sync, 250)
-    return () => window.clearInterval(timer)
-  }, [watchArchiveFilter])
-
-  useLayoutEffect(() => {
-    const scrollport = document.querySelector(scrollportSelector)
-    if (scrollport === null) return
-    const container = document.createElement('div')
-    container.dataset.dshWorkspaceListEnd = ''
-    let current: HTMLElement | null = null
-    const syncMount = () => {
-      const next = current?.isConnected ? current : document.querySelector<HTMLElement>(listSelector)
-      // A native layout or search change may insert a new list body after the portal.
-      if (next !== null && next.lastElementChild !== container) next.append(container)
-      if (next === current) return
-      current = next
-      setMount(next === null ? null : { list: next, container })
-    }
-    syncMount()
-    const observer = new MutationObserver(() => {
-      syncMount()
-      if (request.current !== null && !current?.matches(browsingSelector)) request.current.abort()
-    })
-    observer.observe(scrollport, { childList: true, subtree: true, attributes: true, attributeFilter: ['tabindex'] })
-    return () => {
-      observer.disconnect()
-      container.remove()
-    }
-  }, [listSelector, scrollportSelector, browsingSelector])
-
-  useEffect(() => {
-    if (shown === null || list === null || busy || reveal.current === null) return
+    if (shown === null || busy || reveal.current === null) return
     let frame = requestAnimationFrame(function positionPage() {
       const page = reveal.current
       if (page?.keyboard && activationKeyHeld.current) {
@@ -113,7 +168,7 @@ export function IdleControl({ listSelector, scrollportSelector, browsingSelector
       if (page === null || trigger === null || trigger.getClientRects().length === 0) return
       const keepFocus = page.keyboard && document.activeElement === trigger
       if (page.keyboard && !keepFocus) return
-      const added = addedRows(list, page.ids)
+      const added = addedRows(section, page.ids)
       const first = added[0]
       if (first === undefined) return
       const bounds = list.getBoundingClientRect()
@@ -131,28 +186,26 @@ export function IdleControl({ listSelector, scrollportSelector, browsingSelector
       if (keepFocus) target.focus({ preventScroll: true })
     })
     return () => cancelAnimationFrame(frame)
-  }, [shown, list, scrollportSelector, busy])
-
-  if (mount === null || list === null) return null
+  }, [shown, list, section, scrollportSelector, busy])
 
   const showNextPage = async (keyboard: boolean) => {
     if (request.current !== null) return
     if (canCollapse) {
       reveal.current = null
-      onChange(null)
+      onChange(key, null)
       return
     }
-    const tree = list.querySelector('[role="tree"]')
-    const browsing = () => list.isConnected && list.matches(browsingSelector) && list.querySelector('[role="tree"]') === tree
+    const browsing = () => list.contains(row) && list.matches(browsingSelector) && !row.closest('[aria-hidden="true"]')
+      && (key === null || row.getAttribute('aria-expanded') === 'true')
     if (!browsing()) return
     const ids: string[] = []
     let committed = shown
-    let page = scanIdlePage(list, idle, idleGroups, committed ?? [], IDLE_PAGE_SIZE)
+    let page = scanIdlePage(section, idle, key, committed ?? EMPTY_SELECTION, IDLE_PAGE_SIZE)
     const applyPage = () => {
       const changed = page.added.length > 0 || page.shown.length !== (committed?.length ?? 0)
       if (changed || (committed === null && page.boundary === undefined)) {
         committed = page.shown
-        onChange(page.shown)
+        onChange(key, page.shown)
       }
       ids.push(...page.added)
       setHasMore(page.hasMore)
@@ -173,8 +226,7 @@ export function IdleControl({ listSelector, scrollportSelector, browsingSelector
         const advanced = await loadNativePage(page.boundary, controller.signal)
         if (controller.signal.aborted || !browsing()) return
         if (!advanced) break
-        const current = latestPageData.current
-        page = scanIdlePage(list, current.idle, current.idleGroups, page.shown, IDLE_PAGE_SIZE - ids.length)
+        page = scanIdlePage(section, latestIdle.current, key, page.shown, IDLE_PAGE_SIZE - ids.length)
         applyPage()
       }
       reveal.current = { ids, keyboard }
@@ -184,26 +236,25 @@ export function IdleControl({ listSelector, scrollportSelector, browsingSelector
     }
   }
 
-  return createPortal(<>
-    <div data-dsh-workspace-attention-empty="">{emptyLabel}</div>
-    {idle.size > 0 && !(watchArchiveFilter && archivedOnly) && (
-      <button
-        ref={button}
-        type="button"
-        data-dsh-workspace-idle-toggle=""
-        aria-expanded={shown !== null}
-        aria-disabled={busy || undefined}
-        onClick={event => { void showNextPage(event.detail === 0) }}
-        onKeyDown={event => {
-          if (event.key !== 'Enter' && event.key !== ' ') return
-          activationKeyHeld.current = true
-          if (event.repeat) event.preventDefault()
-        }}
-        onKeyUp={event => {
-          if (event.key === 'Enter' || event.key === ' ') activationKeyHeld.current = false
-        }}
-        onBlur={() => { activationKeyHeld.current = false }}
-      >{busy ? loadingLabel : canCollapse ? collapseLabel : moreLabel}</button>
-    )}
-  </>, mount.container)
+  const label = busy ? loadingLabel : canCollapse ? collapseLabel : moreLabel
+  // The native heading renders its title after the folder and chevron cells.
+  const workspaceName = key === null ? undefined : row.children[2]?.textContent?.trim()
+  return createPortal(<button
+    ref={button}
+    type="button"
+    data-dsh-workspace-idle-toggle=""
+    aria-label={workspaceName ? `${label} · ${workspaceName}` : undefined}
+    aria-expanded={shown !== null}
+    aria-disabled={busy || undefined}
+    onClick={event => { void showNextPage(event.detail === 0) }}
+    onKeyDown={event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      activationKeyHeld.current = true
+      if (event.repeat) event.preventDefault()
+    }}
+    onKeyUp={event => {
+      if (event.key === 'Enter' || event.key === ' ') activationKeyHeld.current = false
+    }}
+    onBlur={() => { activationKeyHeld.current = false }}
+  >{label}</button>, container)
 }

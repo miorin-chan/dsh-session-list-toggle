@@ -1,29 +1,29 @@
 export const IDLE_PAGE_SIZE = 5
 const SESSION = 'session:'
 const OVERFLOW = 'overflow:'
-const PAGE_ROWS = `[data-row-key^="${SESSION}"], button[data-row-key^="${OVERFLOW}"][aria-expanded="false"]`
+const SESSION_ROW = `[data-row-key^="${SESSION}"]`
+const OVERFLOW_ROW = `button[data-row-key^="${OVERFLOW}"][aria-expanded="false"]`
+// Native child Workspaces are inside role="group"; own Sessions may have hover wrappers.
+const OWN_SESSIONS = `:scope > ${SESSION_ROW}, :scope > :not([role="group"]) > ${SESSION_ROW}`
+const GROUP_PAGE_ROWS = `${OWN_SESSIONS}, :scope > ${OVERFLOW_ROW}`
 
-type IdleGroups = ReadonlyMap<string, readonly string[]>
 export function scanIdlePage(
-  list: HTMLElement,
+  section: HTMLElement,
   idle: ReadonlySet<string>,
-  idleGroups: IdleGroups,
+  groupKey: string | null,
   shown: readonly string[],
   remaining: number,
 ) {
-  const rows = [...list.querySelectorAll<HTMLElement>(PAGE_ROWS)].filter(row => !row.closest('[aria-hidden="true"]'))
+  const rows = [...section.querySelectorAll<HTMLElement>(groupKey === null ? SESSION_ROW : GROUP_PAGE_ROWS)]
+    .filter(row => !row.closest('[aria-hidden="true"]'))
   const mounted = new Set(rows.map(row => row.dataset.rowKey))
   const selected = new Set(shown)
-  const boundaries = new Set<HTMLButtonElement>()
-  for (const row of rows) {
-    if (!(row instanceof HTMLButtonElement)) continue
-    const group = row.dataset.rowKey?.slice(OVERFLOW.length) ?? ''
-    const missing = idleGroups.get(group)?.filter(id => !mounted.has(SESSION + id)) ?? []
-    if (missing.length === 0) continue
-    // Previously disclosed rows can be unmounted when a native group folds.
-    for (const id of missing) selected.delete(id)
-    boundaries.add(row)
-  }
+  const nativeOverflow = groupKey === null ? undefined : rows.find(
+    (row): row is HTMLButtonElement => row instanceof HTMLButtonElement && row.dataset.rowKey === OVERFLOW + groupKey,
+  )
+  const missing = nativeOverflow === undefined ? [] : [...idle].filter(id => !mounted.has(SESSION + id))
+  // Native folding may unmount rows from the previously disclosed page.
+  for (const id of missing) selected.delete(id)
   const added: string[] = []
   let boundary: HTMLButtonElement | undefined
   for (const row of rows) {
@@ -34,8 +34,8 @@ export function scanIdlePage(
       if (added.length === remaining) return { shown: [...selected], added, hasMore: true, boundary }
       selected.add(id)
       added.push(id)
-    } else if (row instanceof HTMLButtonElement && boundaries.has(row)) {
-      if (added.length < remaining) boundary = row
+    } else if (row === nativeOverflow && missing.length > 0) {
+      if (added.length < remaining) boundary = nativeOverflow
       return { shown: [...selected], added, hasMore: true, boundary }
     }
   }
@@ -49,8 +49,7 @@ export function loadNativePage(button: HTMLButtonElement, signal: AbortSignal): 
       resolve(false)
       return
     }
-    const groupRows = `:scope > [data-row-key^="${SESSION}"], :scope > :not([role="group"]) > [data-row-key^="${SESSION}"]`
-    const countRows = () => parent.querySelectorAll(groupRows).length
+    const countRows = () => parent.querySelectorAll(OWN_SESSIONS).length
     const before = countRows()
     let continuation = 0
     const finish = (changed: boolean) => {

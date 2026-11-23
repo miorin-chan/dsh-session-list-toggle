@@ -25,48 +25,58 @@ function listFixture(groups) {
   }
 }
 
-test('adds at most five idle rows in native order across group page boundaries', () => {
+test('loads at most five idle rows within one workspace, independently of other workspaces', () => {
   const first = { key: 'first', mounted: ['pin', 'a1'], ids: ['pin', 'a1', 'a2', 'a3', 'a4', 'a5', 'a6'] }
   const second = { key: 'second', mounted: ['b1', 'b2'], ids: ['b1', 'b2'] }
-  const folded = ['c1']
-  const idleGroups = new Map([
-    [first.key, first.ids.slice(1)], [second.key, second.ids], ['folded', folded],
-  ])
-  const idle = new Set([...idleGroups.values()].flat())
-  const list = listFixture([first, second])
-  const initial = scanIdlePage(list, idle, idleGroups, [], IDLE_PAGE_SIZE)
+  const idle = new Set(first.ids.slice(1))
+  // Include a neighboring group's rows before this group's rows, as with a native child Workspace.
+  const list = listFixture([second, first])
+  const initial = scanIdlePage(list, idle, first.key, [], IDLE_PAGE_SIZE)
   assert.deepEqual(initial.shown, ['a1'])
   assert.equal(initial.boundary.dataset.rowKey, 'overflow:first')
 
   first.mounted = first.ids
-  const page1 = scanIdlePage(list, idle, idleGroups, initial.shown, IDLE_PAGE_SIZE - initial.added.length)
+  const page1 = scanIdlePage(list, idle, first.key, initial.shown, IDLE_PAGE_SIZE - initial.added.length)
   assert.deepEqual(page1.shown, ['a1', 'a2', 'a3', 'a4', 'a5'])
   assert.equal(page1.hasMore, true)
   assert.equal(page1.boundary, undefined)
-  const page2 = scanIdlePage(list, idle, idleGroups, page1.shown, IDLE_PAGE_SIZE)
-  assert.deepEqual(page2.added, ['a6', 'b1', 'b2'])
+  const page2 = scanIdlePage(list, idle, first.key, page1.shown, IDLE_PAGE_SIZE)
+  assert.deepEqual(page2.added, ['a6'])
   assert.equal(page2.hasMore, false)
+  const other = scanIdlePage(list, new Set(second.ids), second.key, [], IDLE_PAGE_SIZE)
+  assert.deepEqual(other.shown, ['b1', 'b2'])
 
   first.mounted = ['pin', 'a1']
-  const reopened = scanIdlePage(list, idle, idleGroups, page2.shown, IDLE_PAGE_SIZE)
-  assert.deepEqual(reopened.shown, ['a1', 'b1', 'b2'])
+  const reopened = scanIdlePage(list, idle, first.key, page2.shown, IDLE_PAGE_SIZE)
+  assert.deepEqual(reopened.shown, ['a1'])
   assert.equal(reopened.boundary.dataset.rowKey, 'overflow:first')
   first.mounted = first.ids
-  const restored = scanIdlePage(list, idle, idleGroups, reopened.shown, IDLE_PAGE_SIZE)
+  const restored = scanIdlePage(list, idle, first.key, reopened.shown, IDLE_PAGE_SIZE)
   assert.deepEqual(restored.added, ['a2', 'a3', 'a4', 'a5', 'a6'])
   assert.equal(restored.hasMore, false)
 })
 
 test('scans once and stops at the next native boundary without skipping it', () => {
   const idle = new Set(['outgoing', 'hidden', 'next'])
-  const idleGroups = new Map([['first', ['outgoing', 'hidden']]])
   let scans = 0
-  const list = { querySelectorAll: () => {
+  const list = { querySelectorAll: selector => {
+    assert.match(selector, /:scope > :not\(\[role="group"\]\) > \[data-row-key\^="session:"\]/)
     scans++
-    return [new Row('session:outgoing', true), new Overflow('overflow:first'), new Row('session:next')]
+    return [new Row('session:outgoing', true), new Overflow('overflow:child'), new Overflow('overflow:first'), new Row('session:next')]
   } }
-  const page = scanIdlePage(list, idle, idleGroups, [], IDLE_PAGE_SIZE)
+  const page = scanIdlePage(list, idle, 'first', [], IDLE_PAGE_SIZE)
   assert.deepEqual(page.added, [])
   assert.equal(page.boundary.dataset.rowKey, 'overflow:first')
   assert.equal(scans, 1)
+})
+
+test('flat paging follows the shared list order regardless of workspace membership', () => {
+  const ids = ['b2', 'a1', 'b1', 'a2', 'ungrouped', 'a3']
+  const list = { querySelectorAll: () => sessionRows(['pinned', ...ids]) }
+  const first = scanIdlePage(list, new Set(ids), null, [], IDLE_PAGE_SIZE)
+  assert.deepEqual(first.added, ids.slice(0, 5))
+  assert.equal(first.hasMore, true)
+  const last = scanIdlePage(list, new Set(ids), null, first.shown, IDLE_PAGE_SIZE)
+  assert.deepEqual(last.added, ['a3'])
+  assert.equal(last.hasMore, false)
 })
