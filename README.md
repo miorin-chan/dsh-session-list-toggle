@@ -19,8 +19,8 @@ Search temporarily shows native results and restores the previous mode when clos
 The next time you enter **Needs attention**, idle conversations start collapsed.
 The page starts in **Needs attention**.
 
-Requires DeepSeek Harness 0.2.2-rc.5 or newer.
-Install this directory with **Plugins → Add plugin**.
+Requires DeepSeek Harness 0.2.2-rc.5 or newer. To install from a source checkout,
+run `npm ci` there to build the plugin, then select the directory in **Plugins → Add plugin**.
 If prompted, restart DeepSeek Harness, then expand the sidebar.
 
 [Project documentation](docs/README.md)
