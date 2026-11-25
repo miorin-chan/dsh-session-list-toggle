@@ -84,5 +84,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/miorin-chan/dsh-session-list-toggle.git"
+  },
+  "homepage": "https://github.com/miorin-chan/dsh-session-list-toggle#readme",
+  "bugs": {
+    "url": "https://github.com/miorin-chan/dsh-session-list-toggle/issues"
   }
 }
