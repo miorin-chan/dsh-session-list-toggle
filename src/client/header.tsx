@@ -11,6 +11,7 @@ const MOUNT = '[data-dsh-session-list-heading]'
 const BUTTON = '[data-dsh-session-list-toggle]'
 const TITLE = '[data-dsh-session-list-title]'
 const ARROW = '[data-dsh-session-list-arrow]'
+const COUNT = '[data-dsh-session-list-count]'
 const SEARCH_INPUT = 'input[tabindex]'
 const SEARCHING = 'input[tabindex="0"]'
 const LIST_AREA = '[data-sidebar-list-area]'
@@ -41,6 +42,7 @@ export const HEADER_STYLE = `
       opacity 120ms var(--ds-ease-in-out, ease-in-out),
       transform 180ms var(--ds-ease-in-out, ease-in-out), visibility 0s;
   }
+  ${HEADER} > ${MOUNT}:has(${COUNT}) { max-inline-size: calc(45% + 48px); }
   ${HEADER}:has(${SEARCHING}) > ${MOUNT} {
     max-inline-size: 0;
     opacity: 0;
@@ -81,6 +83,19 @@ export const HEADER_STYLE = `
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  ${BUTTON} > ${COUNT} {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    max-inline-size: 7ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-inline-start: 2px;
+    color: var(--dsw-alias-label-tertiary);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  ${BUTTON}[data-mode="collapsed"] > ${COUNT} { color: var(--dsw-alias-label-secondary); }
   ${BUTTON} > ${ARROW} {
     display: inline-grid;
     place-items: center;
@@ -167,18 +182,20 @@ function useHeaderMount(wide: boolean) {
 // @deepseek-ai/dsh-client-ui-primitives 0.2.2-rc.5, IconTriangleRightFillRegular.
 const TRIANGLE = 'M5.5 4.5C5.5 4.40714 5.52586 4.31612 5.57467 4.23713C5.62349 4.15815 5.69334 4.09431 5.77639 4.05279C5.85945 4.01126 5.95242 3.99368 6.0449 4.00202C6.13738 4.01036 6.22572 4.04429 6.3 4.1L10.967 7.6C11.0291 7.64657 11.0795 7.70697 11.1142 7.77639C11.1489 7.84582 11.167 7.92238 11.167 8C11.167 8.07762 11.1489 8.15418 11.1142 8.22361C11.0795 8.29303 11.0291 8.35343 10.967 8.4L6.3 11.9C6.22572 11.9557 6.13738 11.9896 6.0449 11.998C5.95242 12.0063 5.85945 11.9887 5.77639 11.9472C5.69334 11.9057 5.62349 11.8419 5.57467 11.7629C5.52586 11.6839 5.5 11.5929 5.5 11.5V4.5Z'
 
-export function ListHeading({ wide, mode, label, current, onCycle }: {
-  wide: boolean; mode: Mode; label: string; current: string; onCycle: () => void
+export function ListHeading({ wide, mode, label, current, count, countDescription, onCycle }: {
+  wide: boolean; mode: Mode; label: string; current: string; count?: string; countDescription?: string; onCycle: () => void
 }) {
   const { anchor, mount } = useHeaderMount(wide)
+  const description = countDescription === undefined ? current : `${current} · ${countDescription}`
   return <>
     <span hidden ref={anchor} />
     {wide && mount && createPortal(
-      <Tooltip label={`${current} · ${label}`} side="bottom" delayMs={500} disabled={mount.searching} portal>
+      <Tooltip label={`${description} · ${label}`} side="bottom" delayMs={500} disabled={mount.searching} portal>
         <Button size="sm" variant="ghost" data-dsh-session-list-toggle="" data-mode={mode}
           aria-expanded={mode !== 'collapsed'} aria-label={`${mount.title} — ${label}`}
-          aria-description={current} onClick={onCycle}>
+          aria-description={description} onClick={onCycle}>
           <span data-dsh-session-list-title="">{mount.title}</span>
+          {count !== undefined && <span data-dsh-session-list-count="" aria-hidden="true">{count}</span>}
           <span data-dsh-session-list-arrow="" aria-hidden="true">
             {mode === 'attention' ? (
               <svg width="16" height="16" viewBox="0 0 16 16"

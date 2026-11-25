@@ -13,22 +13,62 @@ export function sessionVisibility(
   const pinned = new Set(pinnedSessionIds)
   const attention: SessionSummary['id'][] = []
   const idle: SessionSummary['id'][] = []
+  let followUp = 0
   for (const id of list.ids) {
     const session = list.byId[id]
     if (session === undefined || session.origin === 'subagent') continue
     if (id !== current && archived.has(id)) continue
     const status = statuses.get(id)
     const pending = status?.pendingInteraction?.kind
-    const needsAttention = id === current || pinned.has(id) || drafts?.has(id)
-      || pending === 'approval' || pending === 'plan-review' || pending === 'question'
+    const hasActivity = drafts?.has(id) || pending === 'approval' || pending === 'plan-review' || pending === 'question'
       || (status?.running ?? session.running) || status?.completionUnread
       || list.projectionsBySession[id]?.values.subagentCatalog?.some(
         child => statuses.get(child.id)?.running ?? list.byId[child.id]?.running ?? false,
       )
-    if (needsAttention) attention.push(id)
+    if (hasActivity && !archived.has(id)) followUp++
+    if (hasActivity || id === current || pinned.has(id)) attention.push(id)
     else if (!session.blank) idle.push(id)
   }
-  return { attention, idle }
+  return { attention, idle, followUp }
+}
+
+export type ArchiveFilter = 'default' | 'show' | 'only'
+
+function browseCount(
+  list: SessionListState,
+  archivedIds: WorkspaceSnapshot['archivedSessionIds'],
+  filter: ArchiveFilter,
+  current: SessionSummary['id'] | undefined,
+): number {
+  const archived = new Set(archivedIds)
+  let count = 0
+  for (const id of list.ids) {
+    const session = list.byId[id]
+    if (!session || session.origin === 'subagent' || (session.blank && id !== current)) continue
+    if (filter === 'show' || archived.has(id) === (filter === 'only')) count++
+  }
+  return count
+}
+
+export function listHeadingCount(
+  mode: 'all' | 'collapsed' | 'attention',
+  list: SessionListState,
+  workspace: Pick<WorkspaceSnapshot, 'phase' | 'archivedSessionIds'>,
+  filter: ArchiveFilter,
+  current: SessionSummary['id'] | undefined,
+  visibility: ReturnType<typeof sessionVisibility> | undefined,
+) {
+  if (list.phase !== 'ready' || workspace.phase !== 'ready') return undefined
+  const archivedIds = workspace.archivedSessionIds
+  if (mode === 'collapsed') {
+    return filter !== 'only' && visibility && visibility.followUp > 0
+      ? { key: 'followUpCount' as const, value: visibility.followUp }
+      : undefined
+  }
+  if (filter === 'only') return { key: 'archiveCount' as const, value: browseCount(list, archivedIds, filter, current) }
+  if (mode === 'all') return { key: 'totalCount' as const, value: browseCount(list, archivedIds, filter, current) }
+  if (visibility === undefined) return undefined
+  return { key: 'retainedCount' as const, value: visibility.attention.length }
 }
 
 export function workspaceVisibility(

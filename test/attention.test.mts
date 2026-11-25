@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { sessionVisibility, workspaceVisibility } from '../src/client/attention.ts'
+import { listHeadingCount, sessionVisibility, workspaceVisibility } from '../src/client/attention.ts'
 import { updateIdlePages } from '../src/client/idle-page.ts'
 
 const session = (id, fields = {}) => ({ id, updatedAt: 1, running: false, ...fields })
@@ -8,6 +8,7 @@ const status = fields => ({ running: false, completionUnread: false, ...fields }
 
 function catalog(sessions, projectionsBySession = {}) {
   return {
+    phase: 'ready',
     ids: sessions.map(row => row.id),
     byId: Object.fromEntries(sessions.map(row => [row.id, row])),
     projectionsBySession,
@@ -36,7 +37,7 @@ test('finds attention rows across the catalog without consulting workspace expan
   const workspace = { archivedSessionIds: ['archived'], pinnedSessionIds: [] }
   assert.deepEqual(sessionVisibility(list, statuses, workspace), {
     attention: ['unread', 'parent-in-folded-workspace', 'running', 'question', 'review', 'approval'],
-    idle: ['idle'],
+    idle: ['idle'], followUp: 6,
   })
   statuses.set('child', status({ running: false }))
   assert.deepEqual(sessionVisibility(list, statuses, workspace).idle, ['parent-in-folded-workspace', 'idle'])
@@ -52,24 +53,24 @@ test('keeps the current session through read and focus changes without counting 
   const statuses = new Map([['first', status({ completionUnread: true })]])
 
   assert.deepEqual(sessionVisibility(list, statuses, workspace, { current: 'first' }), {
-    attention: ['first', 'running'], idle: ['second'],
+    attention: ['first', 'running'], idle: ['second'], followUp: 2,
   })
   statuses.set('first', status({ completionUnread: false }))
   assert.deepEqual(sessionVisibility(list, statuses, workspace, { current: 'first' }), {
-    attention: ['first', 'running'], idle: ['second'],
+    attention: ['first', 'running'], idle: ['second'], followUp: 1,
   })
   assert.deepEqual(sessionVisibility(list, statuses, workspace, { current: 'second' }), {
-    attention: ['running', 'second'], idle: ['first'],
+    attention: ['running', 'second'], idle: ['first'], followUp: 1,
   })
   assert.deepEqual(sessionVisibility(list, statuses, workspace), {
-    attention: ['running'], idle: ['first', 'second'],
+    attention: ['running'], idle: ['first', 'second'], followUp: 1,
   })
   const archived = { ...workspace, archivedSessionIds: ['first'] }
   assert.deepEqual(sessionVisibility(list, statuses, archived, { current: 'first' }), {
-    attention: ['first', 'running'], idle: ['second'],
+    attention: ['first', 'running'], idle: ['second'], followUp: 1,
   })
   assert.deepEqual(sessionVisibility(list, statuses, archived, { current: 'second' }), {
-    attention: ['running', 'second'], idle: [],
+    attention: ['running', 'second'], idle: [], followUp: 1,
   })
 })
 
@@ -86,10 +87,10 @@ test('keeps sessions with drafts and drops the draft criterion when the source i
   const drafts = new Set(['draft', 'new-draft', 'archived', 'subagent', 'missing'])
 
   assert.deepEqual(sessionVisibility(list, statuses, workspace, { drafts }), {
-    attention: ['draft', 'new-draft'], idle: ['idle'],
+    attention: ['draft', 'new-draft'], idle: ['idle'], followUp: 2,
   })
   assert.deepEqual(sessionVisibility(list, statuses, workspace), {
-    attention: [], idle: ['draft', 'idle'],
+    attention: [], idle: ['draft', 'idle'], followUp: 0,
   })
 })
 
@@ -109,11 +110,36 @@ test('keeps idle pinned sessions and reapplies attention rules when they are unp
   }
 
   assert.deepEqual(sessionVisibility(list, statuses, workspace), {
-    attention: ['idle-pinned', 'running-pinned'], idle: ['unpinned'],
+    attention: ['idle-pinned', 'running-pinned'], idle: ['unpinned'], followUp: 1,
   })
   assert.deepEqual(sessionVisibility(list, statuses, { ...workspace, pinnedSessionIds: [] }), {
-    attention: ['running-pinned'], idle: ['idle-pinned', 'unpinned'],
+    attention: ['running-pinned'], idle: ['idle-pinned', 'unpinned'], followUp: 1,
   })
+})
+
+test('heading distinguishes total, retained, follow-up, archives and unknown counts', () => {
+  const list = catalog([
+    session('current', { blank: true }), session('other-blank', { blank: true }), session('idle'),
+    session('pinned'), session('unread'), session('archived', { running: true }),
+    session('child', { origin: 'subagent', running: true }),
+  ])
+  const workspace = { phase: 'ready', archivedSessionIds: ['archived'], pinnedSessionIds: ['pinned'] }
+  const statuses = new Map([['unread', status({ completionUnread: true })]])
+  const visibility = sessionVisibility(list, statuses, workspace, { current: 'current' })
+  const heading = (mode, filter = 'default', snapshot = list, state = visibility) =>
+    listHeadingCount(mode, snapshot, workspace, filter, 'current', state)
+
+  assert.deepEqual(heading('all'), { key: 'totalCount', value: 4 })
+  assert.deepEqual(heading('all', 'show'), { key: 'totalCount', value: 5 })
+  assert.deepEqual(heading('attention'), { key: 'retainedCount', value: 3 })
+  assert.deepEqual(heading('collapsed'), { key: 'followUpCount', value: 1 })
+  assert.deepEqual(heading('attention', 'only'), { key: 'archiveCount', value: 1 })
+  assert.equal(heading('collapsed', 'only'), undefined)
+  assert.equal(heading('all', 'default', { ...list, phase: 'pending' }), undefined)
+  assert.equal(listHeadingCount('all', list, { ...workspace, phase: 'pending' }, 'default', 'current', visibility), undefined)
+  assert.deepEqual(heading('all', 'default', catalog([])), { key: 'totalCount', value: 0 })
+  const quiet = sessionVisibility(list, new Map(), workspace, { current: 'current' })
+  assert.equal(heading('collapsed', 'default', list, quiet), undefined)
 })
 
 test('keeps workspaces with attention or previously disclosed idle sessions', () => {

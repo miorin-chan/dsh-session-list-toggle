@@ -8,9 +8,9 @@ import type { SnapshotSelectorHook, TranslateNS } from '@deepseek-ai/dsh-client-
 import type { SessionStatusSnapshot, UseSessions, UseSessionStatus } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import { sessionVisibility, workspaceVisibility } from './attention.js'
+import { listHeadingCount, sessionVisibility, workspaceVisibility } from './attention.js'
 import { connectDrafts } from './drafts.js'
-import { IdleControls, useArchivedOnly } from './idle-control.js'
+import { IdleControls, useArchiveFilter } from './idle-control.js'
 import { updateIdlePages } from './idle-page.js'
 import type { IdlePages } from './idle-page.js'
 import { useListMotion } from './list-motion.js'
@@ -26,28 +26,52 @@ const EMPTY_ICON = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://
 const LABELS = {
   en: { modeAll: 'All sessions', modeCollapsed: 'List collapsed', modeAttention: 'Needs attention',
     hide: 'Collapse session list', attention: 'Show the current session, pinned sessions, and sessions needing attention', show: 'Show full session list', empty: 'No pinned sessions or sessions needing attention', loading: 'Loading sessions…',
-    expandIdle: 'Show more idle conversations', collapseIdle: 'Show fewer idle conversations' },
+    expandIdle: 'Show more idle conversations', collapseIdle: 'Show fewer idle conversations',
+    idleMore: 'Show more idle ({count})', idleAtMost: 'Show more idle (up to {count})', idleFewer: 'Hide idle ({count})',
+    totalCount: 'Total sessions: {count}', retainedCount: 'Sessions kept in view: {count}',
+    followUpCount: 'Sessions with activity or drafts: {count}', archiveCount: 'Archived sessions: {count}' },
   zh: { modeAll: '全部会话', modeCollapsed: '列表已收起', modeAttention: '需关注',
     hide: '收起会话列表', attention: '显示当前、置顶和需关注的会话', show: '显示全部会话', empty: '没有置顶或需关注的会话', loading: '正在加载会话…',
-    expandIdle: '显示更多空闲会话', collapseIdle: '收起空闲会话' },
+    expandIdle: '显示更多空闲会话', collapseIdle: '收起空闲会话',
+    idleMore: '再显示 {count} 条空闲会话', idleAtMost: '再显示空闲会话（最多 {count} 条）', idleFewer: '收起 {count} 条空闲会话',
+    totalCount: '共 {count} 条会话', retainedCount: '保留 {count} 条会话',
+    followUpCount: '{count} 条会话有活动或草稿', archiveCount: '{count} 条已归档会话' },
   ja: { modeAll: 'すべてのセッション', modeCollapsed: '一覧は折りたたまれています', modeAttention: '要確認',
     hide: 'セッション一覧を折りたたむ', attention: '現在のセッション、ピン留め済み、要確認のセッションを表示', show: 'すべてのセッションを表示', empty: 'ピン留め済みや要確認のセッションはありません', loading: '読み込み中…',
-    expandIdle: '待機中の会話をさらに表示', collapseIdle: '待機中の会話を非表示' },
+    expandIdle: '待機中の会話をさらに表示', collapseIdle: '待機中の会話を非表示',
+    idleMore: '待機中の会話をあと{count}件表示', idleAtMost: '待機中の会話を最大{count}件表示', idleFewer: '待機中の会話{count}件を非表示',
+    totalCount: '全セッション：{count}件', retainedCount: '絞り込み対象：{count}件',
+    followUpCount: '活動または下書きのあるセッション：{count}件', archiveCount: 'アーカイブ済み：{count}件' },
   de: { modeAll: 'Alle Sitzungen', modeCollapsed: 'Liste eingeklappt', modeAttention: 'Handlungsbedarf',
     hide: 'Sitzungsliste einklappen', attention: 'Die aktuelle Sitzung, angeheftete Sitzungen und Sitzungen mit Handlungsbedarf anzeigen', show: 'Alle Sitzungen anzeigen', empty: 'Keine angehefteten Sitzungen oder Sitzungen mit Handlungsbedarf', loading: 'Sitzungen werden geladen…',
-    expandIdle: 'Weitere inaktive Unterhaltungen anzeigen', collapseIdle: 'Inaktive Unterhaltungen ausblenden' },
+    expandIdle: 'Weitere inaktive Unterhaltungen anzeigen', collapseIdle: 'Inaktive Unterhaltungen ausblenden',
+    idleMore: 'Weitere inaktive anzeigen ({count})', idleAtMost: 'Inaktive anzeigen (bis zu {count})', idleFewer: 'Inaktive ausblenden ({count})',
+    totalCount: 'Sitzungen insgesamt: {count}', retainedCount: 'Sitzungen in der Auswahl: {count}',
+    followUpCount: 'Sitzungen mit Aktivität oder Entwürfen: {count}', archiveCount: 'Archivierte Sitzungen: {count}' },
   es: { modeAll: 'Todas las sesiones', modeCollapsed: 'Lista contraída', modeAttention: 'Requieren atención',
     hide: 'Contraer la lista de sesiones', attention: 'Mostrar la sesión actual, las fijadas y las que requieren atención', show: 'Mostrar todas las sesiones', empty: 'No hay sesiones fijadas ni sesiones que requieran atención', loading: 'Cargando sesiones…',
-    expandIdle: 'Mostrar más conversaciones inactivas', collapseIdle: 'Ocultar conversaciones inactivas' },
+    expandIdle: 'Mostrar más conversaciones inactivas', collapseIdle: 'Ocultar conversaciones inactivas',
+    idleMore: 'Mostrar más inactivas ({count})', idleAtMost: 'Mostrar inactivas (hasta {count})', idleFewer: 'Ocultar inactivas ({count})',
+    totalCount: 'Total de sesiones: {count}', retainedCount: 'Sesiones en la selección: {count}',
+    followUpCount: 'Sesiones con actividad o borradores: {count}', archiveCount: 'Sesiones archivadas: {count}' },
   fr: { modeAll: 'Toutes les sessions', modeCollapsed: 'Liste repliée', modeAttention: 'À suivre',
     hide: 'Replier la liste des sessions', attention: 'Afficher la session en cours, les sessions épinglées et celles à suivre', show: 'Afficher toutes les sessions', empty: 'Aucune session épinglée ou à suivre', loading: 'Chargement des sessions…',
-    expandIdle: 'Afficher plus de conversations inactives', collapseIdle: 'Masquer les conversations inactives' },
+    expandIdle: 'Afficher plus de conversations inactives', collapseIdle: 'Masquer les conversations inactives',
+    idleMore: 'Afficher plus d’inactives ({count})', idleAtMost: 'Afficher les inactives (jusqu’à {count})', idleFewer: 'Masquer les inactives ({count})',
+    totalCount: 'Total des sessions : {count}', retainedCount: 'Sessions dans la sélection : {count}',
+    followUpCount: 'Sessions avec une activité ou un brouillon : {count}', archiveCount: 'Sessions archivées : {count}' },
   pt: { modeAll: 'Todas as sessões', modeCollapsed: 'Lista recolhida', modeAttention: 'Exigem atenção',
     hide: 'Recolher a lista de sessões', attention: 'Mostrar a sessão atual, as sessões fixadas e as que exigem atenção', show: 'Mostrar todas as sessões', empty: 'Não há sessões fixadas nem sessões que exijam atenção', loading: 'Carregando sessões…',
-    expandIdle: 'Mostrar mais conversas inativas', collapseIdle: 'Ocultar conversas inativas' },
+    expandIdle: 'Mostrar mais conversas inativas', collapseIdle: 'Ocultar conversas inativas',
+    idleMore: 'Mostrar mais inativas ({count})', idleAtMost: 'Mostrar inativas (até {count})', idleFewer: 'Ocultar inativas ({count})',
+    totalCount: 'Total de sessões: {count}', retainedCount: 'Sessões na seleção: {count}',
+    followUpCount: 'Sessões com atividade ou rascunho: {count}', archiveCount: 'Sessões arquivadas: {count}' },
   ru: { modeAll: 'Все сеансы', modeCollapsed: 'Список свёрнут', modeAttention: 'Требуют внимания',
     hide: 'Свернуть список сеансов', attention: 'Показать текущий сеанс, закреплённые сеансы и сеансы, требующие внимания', show: 'Показать все сеансы', empty: 'Нет закреплённых сеансов или сеансов, требующих внимания', loading: 'Загрузка сеансов…',
-    expandIdle: 'Показать больше неактивных диалогов', collapseIdle: 'Скрыть неактивные диалоги' },
+    expandIdle: 'Показать больше неактивных диалогов', collapseIdle: 'Скрыть неактивные диалоги',
+    idleMore: 'Показать ещё неактивные ({count})', idleAtMost: 'Показать неактивные (до {count})', idleFewer: 'Скрыть неактивные ({count})',
+    totalCount: 'Всего сеансов: {count}', retainedCount: 'Сеансов в выборке: {count}',
+    followUpCount: 'Сеансов с активностью или черновиками: {count}', archiveCount: 'Архивных сеансов: {count}' },
 } as const
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -76,22 +100,16 @@ interface AttentionProps {
   draftSource: ReturnType<typeof connectDrafts>
 }
 
-function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorkspaces, t, draftSource }: AttentionProps) {
+function AttentionFilter({ list, workspace, visibility, t, format }: {
+  list: SessionListState
+  workspace: WorkspaceSnapshot
+  visibility: ReturnType<typeof sessionVisibility>
+  t: TranslateNS<typeof NS>
+  format: (count: number) => string
+}) {
   const [shown, setShown] = useState<IdlePages>(() => new Map())
-  const list = useSessions((value: SessionListState) => value)
-  const statuses = useSessionStatus((value: SessionStatusSnapshot) => value)
-  const workspace: WorkspaceSnapshot = useWorkspaces((value: WorkspaceSnapshot) => value)
-  const drafts = useSyncExternalStore(draftSource.subscribe, draftSource.getSnapshot)
-  const panelActive = usePanelInfo((info: PanelInfo) => info.activePanelId !== null)
-  // Use the same current-session criterion as the native workspace and session rows.
-  const current = panelActive
-    ? undefined
-    : Object.values<SessionSummary>(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
-  const { attention, idle } = sessionVisibility(list, statuses, workspace, { current, drafts })
+  const { attention, idle } = visibility
   const idleIds = new Set<string>(idle)
-  const archivedOnly = useArchivedOnly(workspace.archivedSessionIds.length > 0)
-  // The explicit native archive view owns its contents and empty-state action.
-  if (archivedOnly) return null
   const { activeSessionsByGroup, idleGroups, keptGroups, groupedIds } = workspaceVisibility(
     workspace.items, attention, idle, shown,
   )
@@ -197,10 +215,39 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
       shown={shown}
       onChange={(key, selection) => setShown(previous => updateIdlePages(previous, key, selection))}
       moreLabel={t('expandIdle')}
+      moreCountLabel={(count, atMost) => t(atMost ? 'idleAtMost' : 'idleMore', { count: format(count) })}
       collapseLabel={t('collapseIdle')}
+      collapseCountLabel={count => t('idleFewer', { count: format(count) })}
       loadingLabel={t('loading')}
       emptyLabel={t(list.phase === 'pending' ? 'loading' : 'empty')}
     />
+  </>
+}
+
+function ListContent({ mode, onCycle, locale, t, usePanelInfo, useSessions, useSessionStatus, useWorkspaces, draftSource }: AttentionProps & {
+  mode: Mode
+  onCycle: () => void
+  locale: string
+}) {
+  const list = useSessions((value: SessionListState) => value)
+  const workspace: WorkspaceSnapshot = useWorkspaces((value: WorkspaceSnapshot) => value)
+  const statuses = useSessionStatus((value: SessionStatusSnapshot) => value)
+  const drafts = useSyncExternalStore(draftSource.subscribe, draftSource.getSnapshot)
+  const panelActive = usePanelInfo((info: PanelInfo) => info.activePanelId !== null)
+  const main = Object.values<SessionSummary>(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
+  const filter = useArchiveFilter()
+  const archiveOnly = filter === 'only'
+  const visibility = mode !== 'all' && !archiveOnly
+    ? sessionVisibility(list, statuses, workspace, { current: panelActive ? undefined : main, drafts })
+    : undefined
+  const format = (count: number) => count.toLocaleString(locale)
+  const metric = listHeadingCount(mode, list, workspace, filter, main, visibility)
+  const count = metric && format(metric.value)
+  return <>
+    <style>{HEADER_STYLE}</style>
+    <ListHeading wide mode={mode} label={t(nextLabel[mode])} current={t(modeLabel[mode])} onCycle={onCycle}
+      count={count} countDescription={metric && t(metric.key, { count })} />
+    {mode === 'attention' && visibility && <AttentionFilter {...{ list, workspace, visibility, t, format }} />}
   </>
 }
 
@@ -217,16 +264,12 @@ export function apply(ctx: Context): void {
     const [mode, setMode] = useState(listMode)
     const prepareMotion = useListMotion(mode, wide, BROWSING_LIST, SCROLLPORT)
     if (!wide) return null
-    const label = t(nextLabel[mode])
-    return <>
-      <style>{HEADER_STYLE}</style>
-      <ListHeading wide={wide} mode={mode} label={label} current={t(modeLabel[mode])} onCycle={() => {
+    return <ListContent {...{ mode, t, usePanelInfo, useSessions, useSessionStatus, useWorkspaces, draftSource }}
+      locale={ctx.locale.getLocale().active} onCycle={() => {
         const next = nextMode[mode]
         prepareMotion(next)
         listMode = next
         setMode(next)
       }} />
-      {mode === 'attention' && <AttentionFilter {...{ t, usePanelInfo, useSessions, useSessionStatus, useWorkspaces, draftSource }} />}
-    </>
   }))
 }

@@ -34,6 +34,9 @@ test('registers the footer action and releases it on unload', () => {
         for (const dictionary of Object.values(labels)) {
           assert.ok(dictionary.expandIdle)
           assert.ok(dictionary.collapseIdle)
+          for (const key of ['totalCount', 'retainedCount', 'followUpCount', 'archiveCount', 'idleMore', 'idleAtMost', 'idleFewer']) {
+            assert.match(dictionary[key], /\{count\}/)
+          }
         }
         active.set('locale', namespace)
         return () => active.delete('locale')

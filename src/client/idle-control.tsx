@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { ArchiveFilter } from './attention.js'
 import { IDLE_PAGE_SIZE, loadNativePage, scanIdlePage } from './idle-page.js'
 import type { IdlePages, IdleScopeKey } from './idle-page.js'
 // ui-workspace 0.2.2-rc.5 stores this view preference locally and exposes no slot prop for it.
@@ -19,25 +20,26 @@ interface IdleControlsProps {
   shown: IdlePages
   onChange: (key: IdleScopeKey, shown: string[] | null) => void
   moreLabel: string
+  moreCountLabel: (count: number, atMost: boolean) => string
   collapseLabel: string
+  collapseCountLabel: (count: number) => string
   loadingLabel: string
   emptyLabel: string
 }
 
-export function useArchivedOnly(watchArchiveFilter: boolean) {
-  const [archivedOnly, setArchivedOnly] = useState(isArchivedOnly)
+export function useArchiveFilter(): ArchiveFilter {
+  const [filter, setFilter] = useState(readArchiveFilter)
   useEffect(() => {
-    if (!watchArchiveFilter) return
     // Native view preferences can persist after the new rows render.
-    const sync = () => setArchivedOnly(isArchivedOnly())
+    const sync = () => setFilter(readArchiveFilter())
     sync()
     const timer = window.setInterval(sync, 250)
     return () => window.clearInterval(timer)
-  }, [watchArchiveFilter])
-  return watchArchiveFilter && archivedOnly
+  }, [])
+  return filter
 }
 
-export function IdleControls({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, loadingLabel, emptyLabel }: IdleControlsProps) {
+export function IdleControls({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, emptyLabel, ...labels }: IdleControlsProps) {
   const [mount, setMount] = useState<{ list: HTMLElement; end: HTMLElement; scopes: Scope[] } | null>(null)
 
   useLayoutEffect(() => {
@@ -99,19 +101,20 @@ export function IdleControls({ listSelector, scrollportSelector, browsingSelecto
       const candidates = scope.key === null ? idle : idleGroups.get(scope.key)
       if (candidates === undefined || candidates.size === 0) return null
       return <IdlePageControl key={JSON.stringify(scope.key)}
-        {...{ scope, list: mount.list, scrollportSelector, browsingSelector, moreLabel, collapseLabel, loadingLabel, onChange }}
+        {...labels} {...{ scope, list: mount.list, scrollportSelector, browsingSelector, onChange }}
         idle={candidates} shown={shown.get(scope.key) ?? null} />
     })}
   </>
 }
 
-function isArchivedOnly() {
+function readArchiveFilter(): ArchiveFilter {
   try {
-    const view: unknown = JSON.parse(window.localStorage.getItem(workspaceViewKey) ?? 'null')
-    return view !== null && typeof view === 'object' && 'archivedFilter' in view && view.archivedFilter === 'only'
+    const filter: unknown = JSON.parse(window.localStorage.getItem(workspaceViewKey) ?? 'null')?.archivedFilter
+    if (filter === 'only' || filter === 'show') return filter
   } catch {
-    return false
+    // Use the native default if storage is unavailable or malformed.
   }
+  return 'default'
 }
 
 function addedRows(list: HTMLElement, ids: readonly string[]) {
@@ -122,21 +125,22 @@ function addedRows(list: HTMLElement, ids: readonly string[]) {
   )
 }
 
-function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, idle, shown, onChange, moreLabel, collapseLabel, loadingLabel }: Pick<IdleControlsProps,
-  'scrollportSelector' | 'browsingSelector' | 'idle' | 'onChange' | 'moreLabel' | 'collapseLabel' | 'loadingLabel'> & {
+function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, idle, shown, onChange,
+  moreLabel, moreCountLabel, collapseLabel, collapseCountLabel, loadingLabel }: Omit<IdleControlsProps,
+  'listSelector' | 'idleGroups' | 'shown' | 'emptyLabel'> & {
   scope: Scope
   list: HTMLElement
   shown: readonly string[] | null
 }) {
   const { key, row, section, container } = scope
-  const [hasMore, setHasMore] = useState(true)
+  const [counts, setCounts] = useState<{ next: number; visible: number; atMost: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const request = useRef<AbortController | null>(null)
   const latestIdle = useRef(idle)
   const reveal = useRef<{ ids: string[]; keyboard: boolean } | null>(null)
   const button = useRef<HTMLButtonElement>(null)
   const activationKeyHeld = useRef(false)
-  const canCollapse = shown !== null && !hasMore
+  const canCollapse = shown !== null && counts?.next === 0
 
   useLayoutEffect(() => {
     latestIdle.current = idle
@@ -144,16 +148,22 @@ function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, id
 
   useLayoutEffect(() => () => request.current?.abort(), [scope, list])
 
-  useEffect(() => {
-    if (busy || shown === null) return
-    const sync = () => {
-      if (request.current === null) setHasMore(scanIdlePage(section, idle, key, shown, 0).hasMore)
+  useLayoutEffect(() => {
+    if (busy) return
+    const sync = (records?: MutationRecord[]) => {
+      if (request.current !== null || records?.every(record => container.contains(record.target))) return
+      const page = scanIdlePage(section, idle, key, shown ?? EMPTY_SELECTION, IDLE_PAGE_SIZE)
+      const next = page.nextCount
+      const visible = page.visibleCount
+      const atMost = page.boundary !== undefined
+      setCounts(previous => previous?.next === next && previous.visible === visible && previous.atMost === atMost
+        ? previous : { next, visible, atMost })
     }
     sync()
     const observer = new MutationObserver(sync)
     observer.observe(section, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded', 'aria-hidden'] })
     return () => observer.disconnect()
-  }, [section, idle, key, shown, busy])
+  }, [container, section, idle, key, shown, busy])
 
   useEffect(() => {
     if (shown === null || busy || reveal.current === null) return
@@ -208,7 +218,6 @@ function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, id
         onChange(key, page.shown)
       }
       ids.push(...page.added)
-      setHasMore(page.hasMore)
     }
     if (page.boundary === undefined) {
       reveal.current = { ids, keyboard }
@@ -236,7 +245,11 @@ function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, id
     }
   }
 
-  const label = busy ? loadingLabel : canCollapse ? collapseLabel : moreLabel
+  const label = busy ? loadingLabel
+    : canCollapse ? (counts.visible > 0 ? collapseCountLabel(counts.visible) : collapseLabel)
+    : counts && counts.next > 0 ? moreCountLabel(counts.next, counts.atMost)
+    : moreLabel
+  if (!busy && counts?.next === 0 && counts.visible === 0) return null
   // The native heading renders its title after the folder and chevron cells.
   const workspaceName = key === null ? undefined : row.children[2]?.textContent?.trim()
   return createPortal(<button
