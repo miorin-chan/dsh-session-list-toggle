@@ -22,7 +22,6 @@ interface IdleControlsProps {
   collapseLabel: string
   loadingLabel: string
   emptyLabel: string
-  archivedOnly: boolean
 }
 
 export function useArchivedOnly(watchArchiveFilter: boolean) {
@@ -38,7 +37,7 @@ export function useArchivedOnly(watchArchiveFilter: boolean) {
   return watchArchiveFilter && archivedOnly
 }
 
-export function IdleControls({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, loadingLabel, emptyLabel, archivedOnly }: IdleControlsProps) {
+export function IdleControls({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, loadingLabel, emptyLabel }: IdleControlsProps) {
   const [mount, setMount] = useState<{ list: HTMLElement; end: HTMLElement; scopes: Scope[] } | null>(null)
 
   useLayoutEffect(() => {
@@ -49,8 +48,9 @@ export function IdleControls({ listSelector, scrollportSelector, browsingSelecto
     let current: HTMLElement | null = null
     let scopes: Scope[] = []
     const sync = () => {
-      const list = current?.isConnected ? current : scrollport.querySelector<HTMLElement>(listSelector)
-      if (list !== null && list.lastElementChild !== end) list.append(end)
+      const list = current?.isConnected && current.matches(listSelector) ? current : scrollport.querySelector<HTMLElement>(listSelector)
+      if (list === null) end.remove()
+      else if (list.lastElementChild !== end) list.append(end)
       const tree = list?.matches(browsingSelector) ? list.querySelector<HTMLElement>('[role="tree"]') : null
       const headers = [...(tree?.querySelectorAll<HTMLElement>(WORKSPACE_ROW) ?? [])]
         .filter(row => !row.closest('[aria-hidden="true"]'))
@@ -95,7 +95,7 @@ export function IdleControls({ listSelector, scrollportSelector, browsingSelecto
   if (mount === null) return null
   return <>
     {createPortal(<div data-dsh-workspace-attention-empty="">{emptyLabel}</div>, mount.end)}
-    {!archivedOnly && mount.scopes.map(scope => {
+    {mount.scopes.map(scope => {
       const candidates = scope.key === null ? idle : idleGroups.get(scope.key)
       if (candidates === undefined || candidates.size === 0) return null
       return <IdlePageControl key={JSON.stringify(scope.key)}

@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Trois modes pour la liste latérale",
-    "description": "Cliquez sur la flèche près du titre des espaces de travail ou des sessions pour passer d’un mode à l’autre dans l’ordre Toutes → Repliée → À suivre. Le dernier mode affiche les sessions épinglées, en cours (y compris via des sous-agents), en attente d’approbation, de relecture du plan ou d’une réponse, ainsi que les sessions terminées et non lues. Si Brouillon de session est activé, les conversations avec un brouillon non envoyé restent visibles."
+    "description": "Cliquez sur le titre des espaces de travail ou des sessions, ou sur sa flèche, pour passer d’un mode à l’autre dans l’ordre Toutes → Repliée → À suivre. Le dernier mode affiche les sessions épinglées, en cours (y compris via des sous-agents), en attente d’approbation, de relecture du plan ou d’une réponse, ainsi que les sessions terminées et non lues. Si Brouillon de session est activé, les conversations avec un brouillon non envoyé restent visibles."
   }
 }

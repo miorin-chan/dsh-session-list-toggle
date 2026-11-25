@@ -2,7 +2,7 @@
 
 [简体中文](README.zh.md)
 
-Use the arrow beside Workspaces or Sessions to cycle through **All → Collapsed → Needs attention**.
+Select the Workspaces or Sessions heading or its arrow to cycle through **All → Collapsed → Needs attention**.
 **Needs attention** keeps the current session in its usual group and position.
 It also keeps pinned sessions and sessions with pending approvals, plan reviews or questions,
 ongoing work (including subagents), or unread completions.
@@ -22,5 +22,7 @@ The page starts in **Needs attention**.
 Requires DeepSeek Harness 0.2.2-rc.5 or newer. To install from a source checkout,
 run `npm ci` there to build the plugin, then select the directory in **Plugins → Add plugin**.
 If prompted, restart DeepSeek Harness, then expand the sidebar.
+If you installed `@miorin/dsh-workspace-list-toggle` separately, remove it before installing this renamed bundle.
+If you use List Atlas, update that bundle instead of installing both.
 
 [Project documentation](docs/README.md)

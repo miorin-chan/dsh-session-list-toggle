@@ -36,7 +36,6 @@ export function workspaceVisibility(
   attention: readonly string[],
   idle: readonly string[],
   shown: IdlePages,
-  archivedOnly: boolean,
 ) {
   const pending = new Set(attention)
   const looseIdle = new Set(idle)
@@ -52,7 +51,7 @@ export function workspaceVisibility(
   if (looseIdle.size > 0) idleGroups.set('', looseIdle)
   const keptGroups = new Set(activeSessionsByGroup.keys())
   const groupedIds = [...attention]
-  for (const [key, candidates] of archivedOnly ? [] : idleGroups) {
+  for (const [key, candidates] of idleGroups) {
     if (key !== '' && !shown.has(key)) continue
     keptGroups.add(key)
     groupedIds.push(...(shown.get(key) ?? []).filter(id => candidates.has(id)))

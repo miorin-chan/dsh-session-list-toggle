@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Três modos para a lista lateral",
-    "description": "Clique na seta ao lado do título de espaços de trabalho ou sessões para alternar entre Todas → Recolhida → Exigem atenção. O último modo mostra as sessões fixadas, em andamento (incluindo subagentes), à espera de aprovação, revisão do plano ou resposta, e as concluídas que você ainda não leu. Com Rascunho de sessão ativado, conversas com rascunhos não enviados também ficam visíveis."
+    "description": "Clique no título de espaços de trabalho ou sessões ou na seta ao lado para alternar entre Todas → Recolhida → Exigem atenção. O último modo mostra as sessões fixadas, em andamento (incluindo subagentes), à espera de aprovação, revisão do plano ou resposta, e as concluídas que você ainda não leu. Com Rascunho de sessão ativado, conversas com rascunhos não enviados também ficam visíveis."
   }
 }

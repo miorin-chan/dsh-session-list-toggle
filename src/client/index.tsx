@@ -13,35 +13,40 @@ import { connectDrafts } from './drafts.js'
 import { IdleControls, useArchivedOnly } from './idle-control.js'
 import { updateIdlePages } from './idle-page.js'
 import type { IdlePages } from './idle-page.js'
-import { LIST_CLOSING, LIST_MOTION_MS, useListMotion } from './list-motion.js'
+import { useListMotion } from './list-motion.js'
+import { ATTENTION_LIST, BROWSING_LIST, HEADER_STYLE, LIST, ListHeading, SCROLLPORT } from './header.js'
 
-const NS = 'dsh-workspace-list-toggle'
+const NS = 'dsh-session-list-toggle'
 // DSH IconQueueOutlineRegular artwork. See THIRD-PARTY-NOTICES.txt.
 const EMPTY_ICON = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="black">
   <path d="M5 6.75H11" />
   <path d="M5 9H8" />
   <path d="M2.37067 11.2497C1.5872 9.89252 1.32042 8.29798 1.61945 6.7597C1.91847 5.22141 2.76317 3.84293 3.99801 2.87809C5.23285 1.91325 6.7747 1.427 8.33964 1.50888C9.90458 1.59076 11.3873 2.23526 12.5147 3.32369C13.6422 4.41232 14.3384 5.8717 14.4751 7.43304C14.6118 8.99438 14.1797 10.5525 13.2585 11.8205C12.3372 13.0885 10.9889 13.9809 9.4617 14.3334C8.18666 14.6277 6.8587 14.529 5.64964 14.0601C5.17095 13.8745 4.76937 13.4929 4.26509 13.3963C3.67389 13.2832 2.95232 13.5595 2.0377 14.3334" />
 </svg>`)}`
-// DSH IconTriangleRightFillRegular artwork (sprite `dsw-icon-triangle-right-fill-regular`),
-// the disclosure arrow of native workspace rows. See THIRD-PARTY-NOTICES.txt.
-const TRIANGLE = 'M5.5 4.5C5.5 4.40714 5.52586 4.31612 5.57467 4.23713C5.62349 4.15815 5.69334 4.09431 5.77639 4.05279C5.85945 4.01126 5.95242 3.99368 6.0449 4.00202C6.13738 4.01036 6.22572 4.04429 6.3 4.1L10.967 7.6C11.0291 7.64657 11.0795 7.70697 11.1142 7.77639C11.1489 7.84582 11.167 7.92238 11.167 8C11.167 8.07762 11.1489 8.15418 11.1142 8.22361C11.0795 8.29303 11.0291 8.35343 10.967 8.4L6.3 11.9C6.22572 11.9557 6.13738 11.9896 6.0449 11.998C5.95242 12.0063 5.85945 11.9887 5.77639 11.9472C5.69334 11.9057 5.62349 11.8419 5.57467 11.7629C5.52586 11.6839 5.5 11.5929 5.5 11.5V4.5Z'
-
 const LABELS = {
-  en: { hide: 'Collapse session list', attention: 'Show the current session, pinned sessions, and sessions needing attention', show: 'Show full session list', empty: 'No pinned sessions or sessions needing attention', loading: 'Loading sessions…',
+  en: { modeAll: 'All sessions', modeCollapsed: 'List collapsed', modeAttention: 'Needs attention',
+    hide: 'Collapse session list', attention: 'Show the current session, pinned sessions, and sessions needing attention', show: 'Show full session list', empty: 'No pinned sessions or sessions needing attention', loading: 'Loading sessions…',
     expandIdle: 'Show more idle conversations', collapseIdle: 'Show fewer idle conversations' },
-  zh: { hide: '收起会话列表', attention: '显示当前、置顶和需关注的会话', show: '显示全部会话', empty: '没有置顶或需关注的会话', loading: '正在加载会话…',
+  zh: { modeAll: '全部会话', modeCollapsed: '列表已收起', modeAttention: '需关注',
+    hide: '收起会话列表', attention: '显示当前、置顶和需关注的会话', show: '显示全部会话', empty: '没有置顶或需关注的会话', loading: '正在加载会话…',
     expandIdle: '显示更多空闲会话', collapseIdle: '收起空闲会话' },
-  ja: { hide: 'セッション一覧を折りたたむ', attention: '現在のセッション、ピン留め済み、要確認のセッションを表示', show: 'すべてのセッションを表示', empty: 'ピン留め済みや要確認のセッションはありません', loading: '読み込み中…',
+  ja: { modeAll: 'すべてのセッション', modeCollapsed: '一覧は折りたたまれています', modeAttention: '要確認',
+    hide: 'セッション一覧を折りたたむ', attention: '現在のセッション、ピン留め済み、要確認のセッションを表示', show: 'すべてのセッションを表示', empty: 'ピン留め済みや要確認のセッションはありません', loading: '読み込み中…',
     expandIdle: '待機中の会話をさらに表示', collapseIdle: '待機中の会話を非表示' },
-  de: { hide: 'Sitzungsliste einklappen', attention: 'Die aktuelle Sitzung, angeheftete Sitzungen und Sitzungen mit Handlungsbedarf anzeigen', show: 'Alle Sitzungen anzeigen', empty: 'Keine angehefteten Sitzungen oder Sitzungen mit Handlungsbedarf', loading: 'Sitzungen werden geladen…',
+  de: { modeAll: 'Alle Sitzungen', modeCollapsed: 'Liste eingeklappt', modeAttention: 'Handlungsbedarf',
+    hide: 'Sitzungsliste einklappen', attention: 'Die aktuelle Sitzung, angeheftete Sitzungen und Sitzungen mit Handlungsbedarf anzeigen', show: 'Alle Sitzungen anzeigen', empty: 'Keine angehefteten Sitzungen oder Sitzungen mit Handlungsbedarf', loading: 'Sitzungen werden geladen…',
     expandIdle: 'Weitere inaktive Unterhaltungen anzeigen', collapseIdle: 'Inaktive Unterhaltungen ausblenden' },
-  es: { hide: 'Contraer la lista de sesiones', attention: 'Mostrar la sesión actual, las fijadas y las que requieren atención', show: 'Mostrar todas las sesiones', empty: 'No hay sesiones fijadas ni sesiones que requieran atención', loading: 'Cargando sesiones…',
+  es: { modeAll: 'Todas las sesiones', modeCollapsed: 'Lista contraída', modeAttention: 'Requieren atención',
+    hide: 'Contraer la lista de sesiones', attention: 'Mostrar la sesión actual, las fijadas y las que requieren atención', show: 'Mostrar todas las sesiones', empty: 'No hay sesiones fijadas ni sesiones que requieran atención', loading: 'Cargando sesiones…',
     expandIdle: 'Mostrar más conversaciones inactivas', collapseIdle: 'Ocultar conversaciones inactivas' },
-  fr: { hide: 'Replier la liste des sessions', attention: 'Afficher la session en cours, les sessions épinglées et celles à suivre', show: 'Afficher toutes les sessions', empty: 'Aucune session épinglée ou à suivre', loading: 'Chargement des sessions…',
+  fr: { modeAll: 'Toutes les sessions', modeCollapsed: 'Liste repliée', modeAttention: 'À suivre',
+    hide: 'Replier la liste des sessions', attention: 'Afficher la session en cours, les sessions épinglées et celles à suivre', show: 'Afficher toutes les sessions', empty: 'Aucune session épinglée ou à suivre', loading: 'Chargement des sessions…',
     expandIdle: 'Afficher plus de conversations inactives', collapseIdle: 'Masquer les conversations inactives' },
-  pt: { hide: 'Recolher a lista de sessões', attention: 'Mostrar a sessão atual, as sessões fixadas e as que exigem atenção', show: 'Mostrar todas as sessões', empty: 'Não há sessões fixadas nem sessões que exijam atenção', loading: 'Carregando sessões…',
+  pt: { modeAll: 'Todas as sessões', modeCollapsed: 'Lista recolhida', modeAttention: 'Exigem atenção',
+    hide: 'Recolher a lista de sessões', attention: 'Mostrar a sessão atual, as sessões fixadas e as que exigem atenção', show: 'Mostrar todas as sessões', empty: 'Não há sessões fixadas nem sessões que exijam atenção', loading: 'Carregando sessões…',
     expandIdle: 'Mostrar mais conversas inativas', collapseIdle: 'Ocultar conversas inativas' },
-  ru: { hide: 'Свернуть список сеансов', attention: 'Показать текущий сеанс, закреплённые сеансы и сеансы, требующие внимания', show: 'Показать все сеансы', empty: 'Нет закреплённых сеансов или сеансов, требующих внимания', loading: 'Загрузка сеансов…',
+  ru: { modeAll: 'Все сеансы', modeCollapsed: 'Список свёрнут', modeAttention: 'Требуют внимания',
+    hide: 'Свернуть список сеансов', attention: 'Показать текущий сеанс, закреплённые сеансы и сеансы, требующие внимания', show: 'Показать все сеансы', empty: 'Нет закреплённых сеансов или сеансов, требующих внимания', loading: 'Загрузка сеансов…',
     expandIdle: 'Показать больше неактивных диалогов', collapseIdle: 'Скрыть неактивные диалоги' },
 } as const
 
@@ -51,80 +56,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-// The footer slot supplies the button. These native DOM markers locate the
-// title and list without changing their React ownership.
-const SCROLLPORT = '[data-sidebar-scrollport]'
-const HEADER = `${SCROLLPORT} [data-sidebar-workspace-header]`
-const TITLE = `${HEADER} > span:first-child`
-const BUTTON = '[data-dsh-workspace-list-toggle]'
-const LIST = `${SCROLLPORT} [data-sidebar-list-area]`
 const SESSION_ROW = '[data-row-key^="session:"]'
 const LIST_END = '[data-dsh-workspace-list-end]'
 const IDLE_BUTTON = '[data-dsh-workspace-idle-toggle]'
 const IDLE_GROUP = '[data-dsh-workspace-idle-group]'
 const ATTENTION_EMPTY = '[data-dsh-workspace-attention-empty]'
-const BROWSING = `body:has(${TITLE}):not(:has(${HEADER} input[tabindex="0"]))`
-const STYLE = `
-  ${BUTTON} { display: none; }
-  @supports (anchor-name: --dsh-workspace-list-title) and (position-visibility: anchors-visible) {
-    body:has(${BUTTON}) ${TITLE} {
-      anchor-name: --dsh-workspace-list-title;
-    }
-    body:has(${BUTTON}) ${HEADER}:not(:has(input[tabindex="0"])) > span:first-child {
-      margin-right: 24px;
-    }
-    ${BROWSING}:has(${BUTTON}[aria-expanded="false"]) ${LIST} { display: none; }
-    ${BROWSING}:has(${BUTTON}[aria-expanded="false"]) ${LIST}[${LIST_CLOSING}] {
-      display: block;
-      interactivity: inert;
-      pointer-events: none;
-    }
-    ${BROWSING} ${BUTTON} {
-      display: grid;
-      position: fixed;
-      position-anchor: --dsh-workspace-list-title;
-      position-visibility: anchors-visible;
-      top: anchor(center);
-      left: calc(anchor(right) + 3px);
-      translate: 0 -50%;
-      z-index: 1;
-    }
-  }
-  ${BUTTON} {
-    place-items: center;
-    inline-size: 22px;
-    block-size: 24px;
-    padding: 0;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    /* Rows.module.css .chevron and WorkspaceBrowser.module.css .iconButton (DSH ui-workspace 0.2.2-rc.5). */
-    color: var(--dsw-alias-label-caption);
-    cursor: pointer;
-  }
-  @media (hover: hover) {
-    ${BUTTON}:hover {
-      background: var(--dsw-alias-interactive-bg-hover);
-      color: var(--dsw-alias-label-secondary);
-    }
-  }
-  ${BUTTON}:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
-  /* Down means the list is open; the hollow arrow marks the partial Needs attention list. */
-  ${BUTTON} > svg {
-    transform: rotate(90deg);
-    transition: transform ${LIST_MOTION_MS}ms var(--ds-ease-in-out, ease-in-out);
-  }
-  ${BUTTON}[data-mode="collapsed"] > svg { transform: rotate(0deg); }
-  ${BUTTON} path { transition: fill-opacity ${LIST_MOTION_MS}ms var(--ds-ease-in-out, ease-in-out); }
-  ${BUTTON}[data-mode="attention"] path { fill-opacity: 0; }
-  @media (prefers-reduced-motion: reduce) {
-    ${BUTTON} > svg, ${BUTTON} path { transition: none; }
-  }
-`
 
 const nextMode = { all: 'collapsed', collapsed: 'attention', attention: 'all' } as const
 export type Mode = keyof typeof nextMode
 const nextLabel = { all: 'hide', collapsed: 'attention', attention: 'show' } as const
+const modeLabel = { all: 'modeAll', collapsed: 'modeCollapsed', attention: 'modeAttention' } as const
 
 interface AttentionProps {
   usePanelInfo: UsePanelInfo
@@ -149,17 +90,19 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
   const { attention, idle } = sessionVisibility(list, statuses, workspace, { current, drafts })
   const idleIds = new Set<string>(idle)
   const archivedOnly = useArchivedOnly(workspace.archivedSessionIds.length > 0)
+  // The explicit native archive view owns its contents and empty-state action.
+  if (archivedOnly) return null
   const { activeSessionsByGroup, idleGroups, keptGroups, groupedIds } = workspaceVisibility(
-    workspace.items, attention, idle, shown, archivedOnly,
+    workspace.items, attention, idle, shown,
   )
-  const flatIds = [...attention, ...(archivedOnly ? [] : shown.get(null) ?? []).filter(id => idleIds.has(id))]
+  const flatIds = [...attention, ...(shown.get(null) ?? []).filter(id => idleIds.has(id))]
   const activeWorkspaces = workspace.items.filter(item => keptGroups.has(item.workspaceId))
   const row = (key: string) => `[data-row-key="${CSS.escape(key)}"]`
   const groupRows = [...keptGroups].map(key => row(`workspace:${key}`))
   const groupedRows = groupedIds.map(id => row(`session:${id}`))
   const flatRows = flatIds.map(id => row(`session:${id}`))
   const keep = [...groupedRows, ...groupRows].join(', ') || ':not(*)'
-  const scope = `${BROWSING}:has(${BUTTON}[data-mode="attention"]) ${LIST}`
+  const scope = ATTENTION_LIST
   const nativeWorkspaceRow = '[data-row-key^="workspace:"]:not([aria-hidden="true"] *)'
   const grouped = `${scope}:has(${nativeWorkspaceRow})`
   const flat = `${scope}:not(:has(${nativeWorkspaceRow}))`
@@ -248,7 +191,7 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
     <IdleControls
       listSelector={LIST}
       scrollportSelector={SCROLLPORT}
-      browsingSelector={`${BROWSING} ${LIST}`}
+      browsingSelector={BROWSING_LIST}
       idle={idleIds}
       idleGroups={idleGroups}
       shown={shown}
@@ -257,7 +200,6 @@ function AttentionFilter({ usePanelInfo, useSessions, useSessionStatus, useWorks
       collapseLabel={t('collapseIdle')}
       loadingLabel={t('loading')}
       emptyLabel={t(list.phase === 'pending' ? 'loading' : 'empty')}
-      archivedOnly={archivedOnly}
     />
   </>
 }
@@ -273,30 +215,17 @@ export function apply(ctx: Context): void {
     name: 'sidebar.footer.action', id: NS, locale: NS,
   }, function ListToggle({ t, wide, usePanelInfo, useSessions, useSessionStatus, useWorkspaces }) {
     const [mode, setMode] = useState(listMode)
-    const prepareMotion = useListMotion(mode, wide, `${BROWSING} ${LIST}`, SCROLLPORT)
+    const prepareMotion = useListMotion(mode, wide, BROWSING_LIST, SCROLLPORT)
     if (!wide) return null
     const label = t(nextLabel[mode])
     return <>
-      <style>{STYLE}</style>
-      <button
-        type="button"
-        data-dsh-workspace-list-toggle=""
-        data-mode={mode}
-        aria-expanded={mode !== 'collapsed'}
-        aria-label={label}
-        title={label}
-        onClick={() => {
-          const next = nextMode[mode]
-          prepareMotion(next)
-          listMode = next
-          setMode(next)
-        }}
-      >
-        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"
-          stroke="currentColor" strokeWidth="1" strokeLinejoin="round">
-          <path d={TRIANGLE} />
-        </svg>
-      </button>
+      <style>{HEADER_STYLE}</style>
+      <ListHeading wide={wide} mode={mode} label={label} current={t(modeLabel[mode])} onCycle={() => {
+        const next = nextMode[mode]
+        prepareMotion(next)
+        listMode = next
+        setMode(next)
+      }} />
       {mode === 'attention' && <AttentionFilter {...{ t, usePanelInfo, useSessions, useSessionStatus, useWorkspaces, draftSource }} />}
     </>
   }))

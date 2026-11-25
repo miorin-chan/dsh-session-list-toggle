@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Tres modos para la lista lateral",
-    "description": "Haz clic en la flecha junto al encabezado de espacios de trabajo o sesiones para alternar entre Todas → Contraída → Requieren atención. El último modo muestra las sesiones fijadas, en curso (incluidos los subagentes), pendientes de aprobación, revisión del plan o respuesta, y las finalizadas que aún no has leído. Si Borrador de sesión está activado, también se muestran las conversaciones con borradores sin enviar."
+    "description": "Haz clic en el encabezado de espacios de trabajo o sesiones, o en su flecha, para alternar entre Todas → Contraída → Requieren atención. El último modo muestra las sesiones fijadas, en curso (incluidos los subagentes), pendientes de aprobación, revisión del plan o respuesta, y las finalizadas que aún no has leído. Si Borrador de sesión está activado, también se muestran las conversaciones con borradores sin enviar."
   }
 }

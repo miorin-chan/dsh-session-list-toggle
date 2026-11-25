@@ -6,10 +6,21 @@ let registration
 globalThis.window = { __ModuleLoader__: { load(entry) { registration = entry } } }
 await import('../client.js')
 delete globalThis.window
-const plugin = registration.factory(createRequire(import.meta.url))
+const require = createRequire(import.meta.url)
+const nativeUi = '@deepseek-ai/dsh-client-ui-primitives'
+const imports = new Set()
+const plugin = registration.factory(id => {
+  imports.add(id)
+  // The browser shell, not the plugin's development dependencies, supplies this module.
+  return id === nativeUi ? {} : require(id)
+})
+
+test('uses the shell component library and no unseeded runtime packages', () => {
+  assert.deepEqual(imports, new Set(['react', 'react-dom', 'react/jsx-runtime', nativeUi]))
+})
 
 test('registers the footer action and releases it on unload', () => {
-  assert.equal(registration.id, '@miorin/dsh-workspace-list-toggle')
+  assert.equal(registration.id, '@miorin/dsh-session-list-toggle')
   assert.deepEqual(plugin.inject, ['slots', 'locale'])
 
   const cleanups = []
@@ -42,9 +53,9 @@ test('registers the footer action and releases it on unload', () => {
   }
 
   plugin.apply(ctx)
-  assert.equal(active.get('locale'), 'dsh-workspace-list-toggle')
+  assert.equal(active.get('locale'), 'dsh-session-list-toggle')
   assert.deepEqual(active.get('footer'), {
-    name: 'sidebar.footer.action', id: 'dsh-workspace-list-toggle', locale: 'dsh-workspace-list-toggle',
+    name: 'sidebar.footer.action', id: 'dsh-session-list-toggle', locale: 'dsh-session-list-toggle',
   })
   for (const cleanup of cleanups.reverse()) cleanup()
   assert.equal(active.size, 0)
