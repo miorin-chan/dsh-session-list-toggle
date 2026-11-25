@@ -9,6 +9,7 @@ export const SCROLLPORT = '[data-sidebar-scrollport]'
 const HEADER = '[data-sidebar-workspace-header]'
 const MOUNT = '[data-dsh-session-list-heading]'
 const BUTTON = '[data-dsh-session-list-toggle]'
+const LABEL = '[data-dsh-session-list-label]'
 const TITLE = '[data-dsh-session-list-title]'
 const ARROW = '[data-dsh-session-list-arrow]'
 const COUNT = '[data-dsh-session-list-count]'
@@ -77,25 +78,25 @@ export const HEADER_STYLE = `
     outline: var(--dsw-focus-ring-width, 1px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
     outline-offset: -2px;
   }
-  ${BUTTON} > ${TITLE} {
+  /* Match the label group in Watched Sessions and Background Jobs. */
+  ${BUTTON} > ${LABEL} {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
     min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 20px;
   }
-  ${BUTTON} > ${COUNT} {
+  ${LABEL} > ${TITLE} {
     flex: 0 1 auto;
     min-inline-size: 0;
-    max-inline-size: 7ch;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding-inline-start: 2px;
-    color: var(--dsw-alias-label-tertiary);
-    font-size: 11px;
+  }
+  ${LABEL} > ${COUNT} {
+    flex: none;
     font-variant-numeric: tabular-nums;
   }
-  ${BUTTON}[data-mode="collapsed"] > ${COUNT} { color: var(--dsw-alias-label-secondary); }
   ${BUTTON} > ${ARROW} {
     display: inline-grid;
     place-items: center;
@@ -194,8 +195,10 @@ export function ListHeading({ wide, mode, label, current, count, countDescriptio
         <Button size="sm" variant="ghost" data-dsh-session-list-toggle="" data-mode={mode}
           aria-expanded={mode !== 'collapsed'} aria-label={`${mount.title} — ${label}`}
           aria-description={description} onClick={onCycle}>
-          <span data-dsh-session-list-title="">{mount.title}</span>
-          {count !== undefined && <span data-dsh-session-list-count="" aria-hidden="true">{count}</span>}
+          <span data-dsh-session-list-label="">
+            <span data-dsh-session-list-title="">{mount.title}</span>
+            {count !== undefined && <span data-dsh-session-list-count="" aria-hidden="true">{count}</span>}
+          </span>
           <span data-dsh-session-list-arrow="" aria-hidden="true">
             {mode === 'attention' ? (
               <svg width="16" height="16" viewBox="0 0 16 16"
