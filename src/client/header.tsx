@@ -2,13 +2,15 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 // DSH 0.2.2-rc.5 Web module table, @deepseek-ai/dsh-client-ui-primitives src/index.ts.
 import { Button, IconTriangleRightFillRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
-import { LIST_CLOSING, LIST_MOTION_MS } from './list-motion.js'
+import { LIST_CLOSING } from './list-motion.js'
 import type { Mode } from './index.js'
 
 export const SCROLLPORT = '[data-sidebar-scrollport]'
 const HEADER = '[data-sidebar-workspace-header]'
 const MOUNT = '[data-dsh-session-list-heading]'
 const BUTTON = '[data-dsh-session-list-toggle]'
+const TITLE = '[data-dsh-session-list-title]'
+const ARROW = '[data-dsh-session-list-arrow]'
 const SEARCH_INPUT = 'input[tabindex]'
 const SEARCHING = 'input[tabindex="0"]'
 const LIST_AREA = '[data-sidebar-list-area]'
@@ -30,7 +32,9 @@ export const HEADER_STYLE = `
     max-inline-size: calc(45% + 24px);
     min-inline-size: 0;
     position: relative;
-    inset-inline-start: -1px;
+    inset-inline-start: -5px;
+    margin: 0;
+    font: inherit;
     opacity: 1;
     visibility: visible;
     transition: max-inline-size 180ms var(--ds-ease-in-out, ease-in-out),
@@ -51,30 +55,48 @@ export const HEADER_STYLE = `
     block-size: 24px;
     gap: 3px;
     padding: 0;
-    padding-inline-end: 3px;
+    padding-inline-start: 4px;
+    border-radius: 6px;
     font: inherit;
     line-height: 20px;
-    color: inherit;
+    text-align: start;
+    color: var(--dsw-alias-label-tertiary);
+    transition: color 100ms ease;
+  }
+  /* Match the disclosure feedback in Watched Sessions and Background Jobs. */
+  ${HEADER} ${BUTTON}:active:not(:disabled) { background: transparent; }
+  @media (hover: hover) {
+    ${HEADER} ${BUTTON}:hover:not(:disabled) { background: transparent; }
+    ${HEADER} ${BUTTON}:hover, ${HEADER} ${BUTTON}:hover ${ARROW} {
+      color: var(--dsw-alias-label-secondary);
+    }
   }
   ${HEADER} ${BUTTON}:focus-visible {
     outline: var(--dsw-focus-ring-width, 1px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
     outline-offset: -2px;
   }
-  ${BUTTON} > span {
+  ${BUTTON} > ${TITLE} {
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  ${BUTTON} > svg {
-    display: block;
+  ${BUTTON} > ${ARROW} {
+    display: inline-grid;
+    place-items: center;
     flex: none;
+    inline-size: 22px;
+    block-size: 24px;
     color: var(--dsw-alias-label-caption);
-    transform: rotate(90deg);
-    transition: transform ${LIST_MOTION_MS}ms var(--ds-ease-in-out, ease-in-out);
+    transition: color 100ms ease;
   }
-  ${BUTTON}[data-mode="collapsed"] > svg { transform: rotate(0deg); }
-  ${BUTTON}[data-mode="collapsed"]:dir(rtl) > svg { transform: rotate(180deg); }
+  ${ARROW} > svg {
+    display: block;
+    transform: rotate(90deg);
+    transition: transform 150ms var(--ds-ease-in-out, ease-in-out);
+  }
+  ${BUTTON}[data-mode="collapsed"] ${ARROW} > svg { transform: rotate(0deg); }
+  ${BUTTON}[data-mode="collapsed"]:dir(rtl) ${ARROW} > svg { transform: rotate(180deg); }
   ${ownedList('collapsed')} { display: none; }
   ${ownedList('collapsed')}[${LIST_CLOSING}] {
     display: block;
@@ -82,7 +104,9 @@ export const HEADER_STYLE = `
     pointer-events: none;
   }
   @media (prefers-reduced-motion: reduce) {
-    ${HEADER} > ${MOUNT}:has(> ${BUTTON}), ${BUTTON} > svg { transition: none; }
+    ${HEADER} > ${MOUNT}:has(> ${BUTTON}), ${HEADER} ${BUTTON}, ${BUTTON} > ${ARROW}, ${ARROW} > svg {
+      transition: none;
+    }
   }
 `
 
@@ -97,7 +121,7 @@ function useHeaderMount(wide: boolean) {
     while (ancestor !== null && ancestor.querySelector(SCROLLPORT) === null) ancestor = ancestor.parentElement
     const sidebar = ancestor
     if (sidebar === null) return
-    const target = document.createElement('span')
+    const target = document.createElement('h2')
     target.setAttribute('data-dsh-session-list-heading', '')
     let header: Element | undefined
     let browser: Element | null | undefined
@@ -154,11 +178,13 @@ export function ListHeading({ wide, mode, label, current, onCycle }: {
         <Button size="sm" variant="ghost" data-dsh-session-list-toggle="" data-mode={mode}
           aria-expanded={mode !== 'collapsed'} aria-label={`${mount.title} — ${label}`}
           aria-description={current} onClick={onCycle}>
-          <span>{mount.title}</span>
-          {mode === 'attention' ? (
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16"
-              fill="none" stroke="currentColor" strokeLinejoin="round"><path d={TRIANGLE} /></svg>
-          ) : <IconTriangleRightFillRegular size={16} />}
+          <span data-dsh-session-list-title="">{mount.title}</span>
+          <span data-dsh-session-list-arrow="" aria-hidden="true">
+            {mode === 'attention' ? (
+              <svg width="16" height="16" viewBox="0 0 16 16"
+                fill="none" stroke="currentColor" strokeLinejoin="round"><path d={TRIANGLE} /></svg>
+            ) : <IconTriangleRightFillRegular size={16} />}
+          </span>
         </Button>
       </Tooltip>,
       mount.target,
