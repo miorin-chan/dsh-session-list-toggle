@@ -1,7 +1,13 @@
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { IdlePages } from './idle-page.js'
+
+/** Structural subset of the standard useSessionStatus snapshot (decoupled from owner package across DSH versions). */
+export type SessionStatusSnapshot = ReadonlyMap<SessionSummary['id'], {
+  readonly running: boolean | undefined
+  readonly pendingInteraction: { readonly kind: string } | undefined
+  readonly completionUnread: boolean
+}>
 
 export function sessionVisibility(
   list: SessionListState,

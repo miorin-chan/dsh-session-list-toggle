@@ -5,10 +5,12 @@ import type { PanelInfo, UsePanelInfo } from '@deepseek-ai/dsh-client-ui-layout/
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { SnapshotSelectorHook, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SessionStatusSnapshot, UseSessions, UseSessionStatus } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { UseSessions } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import { listHeadingCount, sessionVisibility, workspaceVisibility } from './attention.js'
+import { listHeadingCount, sessionVisibility, workspaceVisibility, type SessionStatusSnapshot } from './attention.js'
+
+type UseSessionStatus = SnapshotSelectorHook<SessionStatusSnapshot>
 import { connectDrafts } from './drafts.js'
 import { IdleControls, useArchiveFilter } from './idle-control.js'
 import { updateIdlePages } from './idle-page.js'
