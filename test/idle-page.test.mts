@@ -34,21 +34,15 @@ test('loads at most five idle rows within one workspace, independently of other 
   const initial = scanIdlePage(list, idle, first.key, [], IDLE_PAGE_SIZE)
   assert.deepEqual(initial.shown, ['a1'])
   assert.equal(initial.boundary.dataset.rowKey, 'overflow:first')
-  assert.equal(initial.nextCount, 5)
-  assert.equal(initial.visibleCount, 0)
 
   first.mounted = first.ids
   const page1 = scanIdlePage(list, idle, first.key, initial.shown, IDLE_PAGE_SIZE - initial.added.length)
   assert.deepEqual(page1.shown, ['a1', 'a2', 'a3', 'a4', 'a5'])
-  assert.equal(page1.nextCount, 4)
+  assert.equal(page1.hasMore, true)
   assert.equal(page1.boundary, undefined)
   const page2 = scanIdlePage(list, idle, first.key, page1.shown, IDLE_PAGE_SIZE)
   assert.deepEqual(page2.added, ['a6'])
-  assert.equal(page2.nextCount, 1)
-  assert.equal(page2.visibleCount, 5)
-  const complete = scanIdlePage(list, idle, first.key, page2.shown, IDLE_PAGE_SIZE)
-  assert.equal(complete.nextCount, 0)
-  assert.equal(complete.visibleCount, 6)
+  assert.equal(page2.hasMore, false)
   const other = scanIdlePage(list, new Set(second.ids), second.key, [], IDLE_PAGE_SIZE)
   assert.deepEqual(other.shown, ['b1', 'b2'])
 
@@ -56,11 +50,10 @@ test('loads at most five idle rows within one workspace, independently of other 
   const reopened = scanIdlePage(list, idle, first.key, page2.shown, IDLE_PAGE_SIZE)
   assert.deepEqual(reopened.shown, ['a1'])
   assert.equal(reopened.boundary.dataset.rowKey, 'overflow:first')
-  assert.equal(reopened.visibleCount, 1)
-  assert.equal(reopened.nextCount, 5)
   first.mounted = first.ids
   const restored = scanIdlePage(list, idle, first.key, reopened.shown, IDLE_PAGE_SIZE)
   assert.deepEqual(restored.added, ['a2', 'a3', 'a4', 'a5', 'a6'])
+  assert.equal(restored.hasMore, false)
 })
 
 test('scans once and stops at the next native boundary without skipping it', () => {
@@ -82,11 +75,8 @@ test('flat paging follows the shared list order regardless of workspace membersh
   const list = { querySelectorAll: () => sessionRows(['pinned', ...ids]) }
   const first = scanIdlePage(list, new Set(ids), null, [], IDLE_PAGE_SIZE)
   assert.deepEqual(first.added, ids.slice(0, 5))
-  assert.equal(first.nextCount, 5)
+  assert.equal(first.hasMore, true)
   const last = scanIdlePage(list, new Set(ids), null, first.shown, IDLE_PAGE_SIZE)
   assert.deepEqual(last.added, ['a3'])
-  assert.equal(last.nextCount, 1)
-  const onlyMounted = scanIdlePage(list, new Set([...ids, 'missing']), null, last.shown, IDLE_PAGE_SIZE)
-  assert.equal(onlyMounted.nextCount, 0)
-  assert.equal(onlyMounted.visibleCount, 6)
+  assert.equal(last.hasMore, false)
 })

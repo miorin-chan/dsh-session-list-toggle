@@ -16,8 +16,8 @@ A workspace keeps its heading while it has a session needing attention or
 after you reveal its idle sessions in the current visit to **Needs attention**.
 The tree keeps parents needed to reach a visible workspace.
 Switch to **All** to browse hidden workspaces.
-The idle-session button shows how many it can reveal next, up to five at a time in list order.
-Once all idle sessions in that workspace are visible, the button shows how many it will hide.
+**Show more idle conversations** reveals up to five at a time in list order.
+Once all idle sessions in that workspace are visible, **Show fewer idle conversations** collapses its idle sessions.
 The **Ungrouped** section has its own button, and the flat **Sessions** view has one button at the bottom.
 Search temporarily shows native results and restores the previous mode when closed.
 The next time you enter **Needs attention**, idle conversations start collapsed.

@@ -35,27 +35,24 @@ export function scanIdlePage(
     (row): row is HTMLButtonElement => row instanceof HTMLButtonElement && row.dataset.rowKey === OVERFLOW + groupKey,
   )
   const missing = nativeOverflow === undefined ? [] : [...idle].filter(id => !mounted.has(SESSION + id))
-  const visibleCount = [...selected].filter(id => idle.has(id) && mounted.has(SESSION + id)).length
-  const result = (boundary?: HTMLButtonElement) => ({
-    shown: [...selected], added, boundary, visibleCount,
-    nextCount: boundary === undefined ? added.length : Math.min(remaining, added.length + missing.length),
-  })
   // Native folding may unmount rows from the previously disclosed page.
   for (const id of missing) selected.delete(id)
   const added: string[] = []
+  let boundary: HTMLButtonElement | undefined
   for (const row of rows) {
     const key = row.dataset.rowKey ?? ''
     if (key.startsWith(SESSION)) {
       const id = key.slice(SESSION.length)
       if (!idle.has(id) || selected.has(id)) continue
-      if (added.length === remaining) return result()
+      if (added.length === remaining) return { shown: [...selected], added, hasMore: true, boundary }
       selected.add(id)
       added.push(id)
     } else if (row === nativeOverflow && missing.length > 0) {
-      return result(added.length < remaining ? nativeOverflow : undefined)
+      if (added.length < remaining) boundary = nativeOverflow
+      return { shown: [...selected], added, hasMore: true, boundary }
     }
   }
-  return result()
+  return { shown: [...selected], added, hasMore: false, boundary }
 }
 
 export function loadNativePage(button: HTMLButtonElement, signal: AbortSignal): Promise<boolean> {

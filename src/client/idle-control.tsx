@@ -20,9 +20,7 @@ interface IdleControlsProps {
   shown: IdlePages
   onChange: (key: IdleScopeKey, shown: string[] | null) => void
   moreLabel: string
-  moreCountLabel: (count: number, atMost: boolean) => string
   collapseLabel: string
-  collapseCountLabel: (count: number) => string
   loadingLabel: string
   emptyLabel: string
 }
@@ -39,7 +37,7 @@ export function useArchiveFilter(): ArchiveFilter {
   return filter
 }
 
-export function IdleControls({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, emptyLabel, ...labels }: IdleControlsProps) {
+export function IdleControls({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, loadingLabel, emptyLabel }: IdleControlsProps) {
   const [mount, setMount] = useState<{ list: HTMLElement; end: HTMLElement; scopes: Scope[] } | null>(null)
 
   useLayoutEffect(() => {
@@ -101,7 +99,7 @@ export function IdleControls({ listSelector, scrollportSelector, browsingSelecto
       const candidates = scope.key === null ? idle : idleGroups.get(scope.key)
       if (candidates === undefined || candidates.size === 0) return null
       return <IdlePageControl key={JSON.stringify(scope.key)}
-        {...labels} {...{ scope, list: mount.list, scrollportSelector, browsingSelector, onChange }}
+        {...{ scope, list: mount.list, scrollportSelector, browsingSelector, moreLabel, collapseLabel, loadingLabel, onChange }}
         idle={candidates} shown={shown.get(scope.key) ?? null} />
     })}
   </>
@@ -125,22 +123,21 @@ function addedRows(list: HTMLElement, ids: readonly string[]) {
   )
 }
 
-function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, idle, shown, onChange,
-  moreLabel, moreCountLabel, collapseLabel, collapseCountLabel, loadingLabel }: Omit<IdleControlsProps,
-  'listSelector' | 'idleGroups' | 'shown' | 'emptyLabel'> & {
+function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, idle, shown, onChange, moreLabel, collapseLabel, loadingLabel }: Pick<IdleControlsProps,
+  'scrollportSelector' | 'browsingSelector' | 'idle' | 'onChange' | 'moreLabel' | 'collapseLabel' | 'loadingLabel'> & {
   scope: Scope
   list: HTMLElement
   shown: readonly string[] | null
 }) {
   const { key, row, section, container } = scope
-  const [counts, setCounts] = useState<{ next: number; visible: number; atMost: boolean } | null>(null)
+  const [hasMore, setHasMore] = useState(true)
   const [busy, setBusy] = useState(false)
   const request = useRef<AbortController | null>(null)
   const latestIdle = useRef(idle)
   const reveal = useRef<{ ids: string[]; keyboard: boolean } | null>(null)
   const button = useRef<HTMLButtonElement>(null)
   const activationKeyHeld = useRef(false)
-  const canCollapse = shown !== null && counts?.next === 0
+  const canCollapse = shown !== null && !hasMore
 
   useLayoutEffect(() => {
     latestIdle.current = idle
@@ -148,22 +145,16 @@ function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, id
 
   useLayoutEffect(() => () => request.current?.abort(), [scope, list])
 
-  useLayoutEffect(() => {
-    if (busy) return
-    const sync = (records?: MutationRecord[]) => {
-      if (request.current !== null || records?.every(record => container.contains(record.target))) return
-      const page = scanIdlePage(section, idle, key, shown ?? EMPTY_SELECTION, IDLE_PAGE_SIZE)
-      const next = page.nextCount
-      const visible = page.visibleCount
-      const atMost = page.boundary !== undefined
-      setCounts(previous => previous?.next === next && previous.visible === visible && previous.atMost === atMost
-        ? previous : { next, visible, atMost })
+  useEffect(() => {
+    if (busy || shown === null) return
+    const sync = () => {
+      if (request.current === null) setHasMore(scanIdlePage(section, idle, key, shown, 0).hasMore)
     }
     sync()
     const observer = new MutationObserver(sync)
     observer.observe(section, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-expanded', 'aria-hidden'] })
     return () => observer.disconnect()
-  }, [container, section, idle, key, shown, busy])
+  }, [section, idle, key, shown, busy])
 
   useEffect(() => {
     if (shown === null || busy || reveal.current === null) return
@@ -218,6 +209,7 @@ function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, id
         onChange(key, page.shown)
       }
       ids.push(...page.added)
+      setHasMore(page.hasMore)
     }
     if (page.boundary === undefined) {
       reveal.current = { ids, keyboard }
@@ -245,11 +237,7 @@ function IdlePageControl({ scope, list, scrollportSelector, browsingSelector, id
     }
   }
 
-  const label = busy ? loadingLabel
-    : canCollapse ? (counts.visible > 0 ? collapseCountLabel(counts.visible) : collapseLabel)
-    : counts && counts.next > 0 ? moreCountLabel(counts.next, counts.atMost)
-    : moreLabel
-  if (!busy && counts?.next === 0 && counts.visible === 0) return null
+  const label = busy ? loadingLabel : canCollapse ? collapseLabel : moreLabel
   // The native heading renders its title after the folder and chevron cells.
   const workspaceName = key === null ? undefined : row.children[2]?.textContent?.trim()
   return createPortal(<button
