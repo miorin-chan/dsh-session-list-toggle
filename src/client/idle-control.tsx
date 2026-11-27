@@ -25,16 +25,17 @@ interface IdleControlsProps {
   emptyLabel: string
 }
 
-export function useArchiveFilter(): ArchiveFilter {
+export function useArchiveFilter(browserFilter: ArchiveFilter | undefined): ArchiveFilter {
   const [filter, setFilter] = useState(readArchiveFilter)
   useEffect(() => {
-    // Native view preferences can persist after the new rows render.
+    if (browserFilter !== undefined) return
+    // The native browser does not expose its live filter to the footer slot.
     const sync = () => setFilter(readArchiveFilter())
     sync()
     const timer = window.setInterval(sync, 250)
     return () => window.clearInterval(timer)
-  }, [])
-  return filter
+  }, [browserFilter])
+  return browserFilter ?? filter
 }
 
 export function IdleControls({ listSelector, scrollportSelector, browsingSelector, idle, idleGroups, shown, onChange, moreLabel, collapseLabel, loadingLabel, emptyLabel }: IdleControlsProps) {

@@ -8,7 +8,8 @@ import type { SnapshotSelectorHook, TranslateNS } from '@deepseek-ai/dsh-client-
 import type { UseSessions } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import { listHeadingCount, sessionVisibility, workspaceVisibility, type SessionStatusSnapshot } from './attention.js'
+import { listHeadingCount, ordinarySessionIds, sessionVisibility, workspaceVisibility, type SessionStatusSnapshot } from './attention.js'
+import { createOrdinaryListSource } from './ordinary-list-source.js'
 
 type UseSessionStatus = SnapshotSelectorHook<SessionStatusSnapshot>
 import { connectDrafts } from './drafts.js'
@@ -218,29 +219,33 @@ function AttentionFilter({ list, workspace, visibility, t, archivedOnly }: {
   </>
 }
 
-function ListContent({ mode, onCycle, locale, t, usePanelInfo, useSessions, useSessionStatus, useWorkspaces, draftSource }: AttentionProps & {
+function ListContent({ mode, onCycle, locale, t, usePanelInfo, useSessions, useSessionStatus, useWorkspaces, draftSource, ordinaryListSource }: AttentionProps & {
   mode: Mode
   onCycle: () => void
   locale: string
+  ordinaryListSource: ReturnType<typeof createOrdinaryListSource>
 }) {
   const list = useSessions((value: SessionListState) => value)
   const workspace: WorkspaceSnapshot = useWorkspaces((value: WorkspaceSnapshot) => value)
   const statuses = useSessionStatus((value: SessionStatusSnapshot) => value)
   const drafts = useSyncExternalStore(draftSource.subscribe, draftSource.getSnapshot)
+  const ordinaryScope = useSyncExternalStore(ordinaryListSource.subscribe, ordinaryListSource.getSnapshot)
   const panelActive = usePanelInfo((info: PanelInfo) => info.activePanelId !== null)
   const main = Object.values<SessionSummary>(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
-  const filter = useArchiveFilter()
-  const archivedOnly = filter === 'only' && workspace.archivedSessionIds.length > 0
-  const visibility = mode === 'attention' || (mode === 'collapsed' && filter !== 'only')
-    ? sessionVisibility(list, statuses, workspace, { current: panelActive ? undefined : main, drafts })
+  const filter = useArchiveFilter(ordinaryScope?.archiveFilter)
+  const archivedOnly = filter === 'only'
+  const ready = list.phase === 'ready' && workspace.phase === 'ready'
+  const ordinaryIds = ordinarySessionIds(list, workspace.archivedSessionIds, filter, main, ordinaryScope?.excludedIds)
+  const visibility = !archivedOnly && (mode === 'attention' || mode === 'collapsed')
+    ? sessionVisibility(list, statuses, workspace, ordinaryIds, { current: panelActive ? undefined : main, drafts })
     : undefined
-  const metric = listHeadingCount(mode, list, workspace, filter, main, visibility)
+  const metric = listHeadingCount(mode, ready, filter, ordinaryIds, visibility)
   const count = metric?.value.toLocaleString(locale)
   return <>
     <style>{HEADER_STYLE}</style>
     <ListHeading wide mode={mode} label={t(nextLabel[mode])} current={t(modeLabel[mode])} onCycle={onCycle}
       count={count} countDescription={metric && t(metric.key, { count })} />
-    {mode === 'attention' && visibility && <AttentionFilter {...{ list, workspace, visibility, t, archivedOnly }} />}
+    {mode === 'attention' && !archivedOnly && visibility && <AttentionFilter {...{ list, workspace, visibility, t, archivedOnly }} />}
   </>
 }
 
@@ -250,6 +255,7 @@ export function apply(ctx: Context): void {
   // Keep the preference for this page even if the sidebar footer remounts.
   let listMode: Mode = 'attention'
   const draftSource = connectDrafts(ctx)
+  const ordinaryListSource = createOrdinaryListSource(ctx.slots)
   ctx.effect(() => ctx.locale.register(NS, LABELS))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: NS, locale: NS,
@@ -257,7 +263,7 @@ export function apply(ctx: Context): void {
     const [mode, setMode] = useState(listMode)
     const prepareMotion = useListMotion(mode, wide, BROWSING_LIST, SCROLLPORT)
     if (!wide) return null
-    return <ListContent {...{ mode, t, usePanelInfo, useSessions, useSessionStatus, useWorkspaces, draftSource }}
+    return <ListContent {...{ mode, t, usePanelInfo, useSessions, useSessionStatus, useWorkspaces, draftSource, ordinaryListSource }}
       locale={ctx.locale.getLocale().active} onCycle={() => {
         const next = nextMode[mode]
         prepareMotion(next)

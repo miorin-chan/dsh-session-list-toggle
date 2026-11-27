@@ -9,10 +9,29 @@ export type SessionStatusSnapshot = ReadonlyMap<SessionSummary['id'], {
   readonly completionUnread: boolean
 }>
 
+export type ArchiveFilter = 'default' | 'show' | 'only'
+
+/** Catalog membership of the ordinary browser before grouping, paging or attention filtering. */
+export function ordinarySessionIds(
+  list: SessionListState,
+  archivedIds: WorkspaceSnapshot['archivedSessionIds'],
+  filter: ArchiveFilter,
+  main: SessionSummary['id'] | undefined,
+  excluded?: ReadonlySet<string>,
+) {
+  const archived = new Set(archivedIds)
+  return list.ids.filter(id => {
+    const session = list.byId[id]
+    return session !== undefined && session.origin !== 'subagent' && (!session.blank || id === main)
+      && !excluded?.has(id) && (filter === 'show' || archived.has(id) === (filter === 'only'))
+  })
+}
+
 export function sessionVisibility(
   list: SessionListState,
   statuses: SessionStatusSnapshot,
   { archivedSessionIds, pinnedSessionIds }: Pick<WorkspaceSnapshot, 'archivedSessionIds' | 'pinnedSessionIds'>,
+  ids: readonly SessionSummary['id'][],
   { current, drafts }: { current?: SessionSummary['id']; drafts?: ReadonlySet<string> } = {},
 ) {
   const archived = new Set(archivedSessionIds)
@@ -20,59 +39,41 @@ export function sessionVisibility(
   const attention: SessionSummary['id'][] = []
   const idle: SessionSummary['id'][] = []
   let followUp = 0
-  for (const id of list.ids) {
+  for (const id of ids) {
     const session = list.byId[id]
-    if (session === undefined || session.origin === 'subagent') continue
-    if (id !== current && archived.has(id)) continue
+    if (session === undefined) continue
+    const isArchived = archived.has(id)
     const status = statuses.get(id)
     const pending = status?.pendingInteraction?.kind
-    const hasActivity = drafts?.has(id) || pending === 'approval' || pending === 'plan-review' || pending === 'question'
+    const hasActivity = !isArchived && (
+      drafts?.has(id) || pending === 'approval' || pending === 'plan-review' || pending === 'question'
       || (status?.running ?? session.running) || status?.completionUnread
       || list.projectionsBySession[id]?.values.subagentCatalog?.some(
         child => statuses.get(child.id)?.running ?? list.byId[child.id]?.running ?? false,
       )
-    if (hasActivity && !archived.has(id)) followUp++
-    if (hasActivity || id === current || pinned.has(id)) attention.push(id)
+    )
+    if (hasActivity) followUp++
+    if (hasActivity || id === current || (!isArchived && pinned.has(id))) attention.push(id)
     else if (!session.blank) idle.push(id)
   }
   return { attention, idle, followUp }
 }
 
-export type ArchiveFilter = 'default' | 'show' | 'only'
-
-function browseCount(
-  list: SessionListState,
-  archivedIds: WorkspaceSnapshot['archivedSessionIds'],
-  filter: ArchiveFilter,
-  current: SessionSummary['id'] | undefined,
-): number {
-  const archived = new Set(archivedIds)
-  let count = 0
-  for (const id of list.ids) {
-    const session = list.byId[id]
-    if (!session || session.origin === 'subagent' || (session.blank && id !== current)) continue
-    if (filter === 'show' || archived.has(id) === (filter === 'only')) count++
-  }
-  return count
-}
-
 export function listHeadingCount(
   mode: 'all' | 'collapsed' | 'attention',
-  list: SessionListState,
-  workspace: Pick<WorkspaceSnapshot, 'phase' | 'archivedSessionIds'>,
+  ready: boolean,
   filter: ArchiveFilter,
-  current: SessionSummary['id'] | undefined,
+  ids: readonly SessionSummary['id'][],
   visibility: ReturnType<typeof sessionVisibility> | undefined,
 ) {
-  if (list.phase !== 'ready' || workspace.phase !== 'ready') return undefined
-  const archivedIds = workspace.archivedSessionIds
+  if (!ready) return undefined
   if (mode === 'collapsed') {
     return filter !== 'only' && visibility && visibility.followUp > 0
       ? { key: 'followUpCount' as const, value: visibility.followUp }
       : undefined
   }
-  if (filter === 'only') return { key: 'archiveCount' as const, value: browseCount(list, archivedIds, filter, current) }
-  if (mode === 'all') return { key: 'totalCount' as const, value: browseCount(list, archivedIds, filter, current) }
+  if (filter === 'only') return { key: 'archiveCount' as const, value: ids.length }
+  if (mode === 'all') return { key: 'totalCount' as const, value: ids.length }
   if (visibility === undefined) return undefined
   return { key: 'retainedCount' as const, value: visibility.attention.length }
 }
