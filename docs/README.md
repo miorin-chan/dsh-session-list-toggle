@@ -1,6 +1,7 @@
 # 项目文档
 
-[使用说明](../README.zh.md) · [开发约定](../AGENTS.local.md)
+- [产品设计](../DESIGN.md)：问题、目标体验、边界与成功标准。
+- [使用说明](../README.zh.md) · [开发约定](../AGENTS.local.md)
 
 DSH 0.2.2-rc.5 没有独立的列表标题插槽。
 插件通过 `sidebar.footer.action` 获取侧栏作用域，再把自己的标题控件挂到原生工具栏开头。
