@@ -30,3 +30,12 @@ If you installed `@miorin/dsh-workspace-list-toggle` separately, remove it befor
 If you use List Atlas, update that bundle instead of installing both.
 
 [Project documentation](docs/README.md)
+
+## Screenshots
+
+**Needs attention** keeps the current session visible and lets you reveal more idle sessions.
+The screenshots show the Chinese interface.
+
+| | Light | Dark |
+| --- | --- | --- |
+| Needs attention view | ![Needs attention view with the current session and a button to reveal more idle sessions (light theme)](docs/assets/screenshots/main-light.png) | ![Needs attention view with the current session and a button to reveal more idle sessions (dark theme)](docs/assets/screenshots/main-dark.png) |
